@@ -7,37 +7,17 @@
 *  Written by Ivan Ryabov <abbyssoul@gmail.com>
 */
 /*******************************************************************************
- * ghostd Unit Test Suit
+ * KasoFS Unit Test Suit
  *	@file test/test_vfs.cpp
- *	@brief		Test suit for ghostd::vfs::Vfs
+ *	@brief		Test suit for KasoFS::Vfs
  ******************************************************************************/
-#include "vfs/vfs.hpp"    // Class being tested.
+#include "vfs.hpp"    // Class being tested.
 
 #include <gtest/gtest.h>
 
+
+using namespace kasofs;
 using namespace Solace;
-using namespace aliss::ghostd::vfs;
-
-
-//INode makeIntNode(uint64 value) {
-//    auto node = INode{INode::TypeTag<INode::Type::Data>{}};
-//    node.writer(node.meta().owner).then([value](auto&& writer) { writer.write(value); });
-
-//    return node;
-//}
-
-//Vfs::index_type
-//makeIntNode(Vfs& fs, StringView name, uint64 value, Vfs::index_type rootId = 0) {
-//    auto maybeId = fs.mknode(rootId, name, INode::Type::Data);
-//    if (maybeId) {
-//        auto node = fs.nodeById(*maybeId);
-//        node->writer(node->meta().owner).then([value](auto&& writer) { writer.write(value); });
-
-//        return *maybeId;
-//    }
-
-//    return 0;
-//}
 
 
 TEST(TestVfs, testContructor) {
@@ -256,4 +236,43 @@ TEST(TestVfs, testWalk) {
     count = -3;
     EXPECT_FALSE(vfs.walk(User{32,0}, 0, makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(-3, count);
+}
+
+
+
+TEST(TestVfsINode, testDirectoryAddEntries) {
+    auto node = INode{INode::TypeTag<INode::Type::Directory>{}, User{0,0}, 0, FilePermissions{0666}};
+
+    EXPECT_EQ(0, node.entriesCount());
+    EXPECT_TRUE(node.findEntry("some").isNone());
+    EXPECT_TRUE(node.findEntry("knowhere").isNone());
+
+    node.addDirEntry("knowhere", 32);
+    node.addDirEntry("other", 776);
+    EXPECT_EQ(2, node.entriesCount());
+    EXPECT_TRUE(node.findEntry("knowhere").isSome());
+}
+
+TEST(TestVfsINode, testSynthDirListing) {
+    bool isListed = false;
+
+    auto node = INode{User{0,0}, 0, FilePermissions{0666},
+            [&isListed]()  {
+                isListed = true;
+                static INode::Entry entries[] = {
+                    {"one", 3},
+                    {"two", 6},
+                    {"none", 9},
+                };
+
+                return INode::EntriesIterator{entries, entries + 3};
+            }};
+
+    INode::index_type index = 3;
+    for (auto const& e : node.entries()) {
+        EXPECT_EQ(index, e.index);
+        index += 3;
+    }
+
+    ASSERT_TRUE(isListed);
 }

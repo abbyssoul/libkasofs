@@ -27,38 +27,56 @@
 
 namespace kasofs {
 
+struct VfsIndex {
+    Solace::uint32 vfsIndex;
+    Solace::uint32 nodexIndex;
+};
+
+struct Entry {
+    constexpr Entry(Solace::StringView n, VfsIndex i) noexcept
+        : name{n}
+        , index{i}
+    {}
+
+    Solace::StringView  name;
+    VfsIndex            index;
+};
 
 
 struct EntriesIterator {
-    INode::Entry const* begin() const  { return _begin; }
-    INode::Entry const* end() const    { return _end; }
+    Entry const* begin() const  { return _begin; }
+    Entry const* end() const    { return _end; }
 
-    INode::Entry const* _begin;
-    INode::Entry const* _end;
+    Entry const* _begin;
+    Entry const* _end;
 };
+
 
 struct VfsOps {
 
     std::function<int(INode&)> read;
     std::function<int(INode&)> write;
 
-    std::function<Solace::Optional<INode::Entry>(INode&, Solace::StringView)>   findEntry;
+    std::function<Solace::Optional<Entry>(INode&, Solace::StringView)>   findEntry;
     std::function<Solace::Optional<Solace::Error>(User, INode&, Solace::StringView, int)>   addEntry;
     std::function<Solace::Optional<Solace::Error>(INode&, Solace::StringView)>   removeEntry;
     std::function<EntriesIterator(INode&)>   listEntries;
 
-    std::function<Solace::Optional<INode*>(INode::index_type)>                  nodeById;
+    std::function<Solace::Optional<INode*>(VfsIndex)>                  nodeById;
 };
+
+
+
 
 
 struct Vfs {
     static const Solace::StringLiteral kThisDir;
 
-    using index_type = INode::index_type;
+    using index_type = VfsIndex;
     using size_type = std::vector<INode>::size_type;
 
     /**
-     * VFS Mount description
+     * Descriptor of a mounted vfs
      */
     struct Mount {
         Solace::uint32  vfsIndex;
@@ -87,8 +105,8 @@ public:
      * @param id inode number.
      * @return Optional INode if given inode was found, none otherwise.
      */
-    Solace::Optional<INode*> nodeById(index_type id) noexcept;
-    Solace::Optional<INode const*> nodeById(index_type id) const noexcept;
+    auto nodeById(index_type id) noexcept -> Solace::Optional<INode*>;
+    auto nodeById(index_type id) const noexcept -> Solace::Optional<INode const*>;
 
     /**
      * Create a named link from inode A to inode B
@@ -120,48 +138,6 @@ public:
     Solace::Result<EntriesIterator, Solace::Error>
     entries(User user, index_type dirNodeId) const;
 
-/*
-    template<typename F>
-    Solace::Result<index_type, Solace::Error>
-    mknode(User user, index_type rootIndex, Solace::StringView entName, FilePermissions perms, F&& f) {
-        auto maybePermissions = effectivePermissionsFor(user, rootIndex, perms);
-        if (!maybePermissions)
-            return Err(maybePermissions.getError());
-
-        auto const nextIndex = inodes.size();
-        inodes.emplace_back(user, nextIndex, *maybePermissions, std::forward<F>(f));
-
-        // Link
-        nodeById(rootIndex)
-                .map([entName, nextIndex](auto& parent) {
-                    parent->addDirEntry(entName, nextIndex);
-                    return 0;
-                });
-
-        return Solace::Ok(nextIndex);
-    }
-
-    template<typename ReadF, typename WriteF>
-    Solace::Result<index_type, Solace::Error>
-    mknode(User user, index_type rootIndex, Solace::StringView entName, FilePermissions perms, ReadF&& r, WriteF&& w) {
-        auto maybePermissions = effectivePermissionsFor(user, rootIndex, perms);
-        if (!maybePermissions)
-            return Err(maybePermissions.getError());
-
-        auto const nextIndex = inodes.size();
-        inodes.emplace_back(user, nextIndex, *maybePermissions, std::forward<ReadF>(r), std::forward<WriteF>(w));
-
-        // Link
-        nodeById(rootIndex)
-                .map([entName, nextIndex](auto& parent) {
-                    parent->addDirEntry(entName, nextIndex);
-                    return 0;
-                });
-
-        return Solace::Ok(nextIndex);
-    }
-*/
-
     /**
      * Create a node of the given type and link it to the specified root.
      * @param user User - owner of a node to be created. Note this user must have write permission to the root.
@@ -180,25 +156,25 @@ public:
     Solace::Result<index_type, Solace::Error>
     umount(User user, index_type mountingPoint);
 
-    Solace::Result<INode::Entry, Solace::Error>
+    Solace::Result<Entry, Solace::Error>
     walk(User user, Solace::Path const& path) const {
-        return walk(user, 0, path);
+        return walk(user, {0,0}, path);
     }
 
-    Solace::Result<INode::Entry, Solace::Error>
+    Solace::Result<Entry, Solace::Error>
     walk(User user, index_type rootId, Solace::Path const& path) const {
         return walk(user, rootId, path, [](auto const& ){});
     }
 
     template<typename F>
-    Solace::Result<INode::Entry, Solace::Error>
+    Solace::Result<Entry, Solace::Error>
     walk(User user, index_type rootId, Solace::Path const& path, F&& f) const {
         auto maybeNode = nodeById(rootId);
         if (!maybeNode) {   // Valid file id required to start the walk
             return Err(makeError(Solace::GenericError::BADF , "walk"));
         }
 
-        auto resultingEntry = INode::Entry{kThisDir, rootId};
+        auto resultingEntry = Entry{kThisDir, rootId};
         for (auto const& segment : path) {
             INode const* const node = *maybeNode;
             if (!node->userCan(user, Permissions::READ)) {
@@ -238,12 +214,12 @@ protected:
             return Err(makeError(Solace::GenericError::PERM, "mkNode"));
         }
 
-        auto const dirPerms = dir.meta().mode;
+        auto const dirPerms = dir.permissions;
         Solace::uint32 const permBase = (type == INode::Type::Data)
                 ? 0666
                 : 0777;
 
-        return Solace::Ok(FilePermissions{perms.value & (~permBase | (dirPerms.mode & permBase))});
+        return Solace::Ok(FilePermissions{perms.value & (~permBase | (dirPerms.value & permBase))});
     }
 
     /**
@@ -252,7 +228,7 @@ protected:
      * @param name Name of the entry to find.
      * @return Either an enry record or none.
      */
-    Solace::Optional<INode::Entry>
+    Solace::Optional<Entry>
     findEntry(INode const& node, Solace::StringView name) const;
 
 private:
@@ -261,7 +237,7 @@ private:
     std::vector<INode> inodes;
 
     /// Directory entries - Named Graph edges
-    std::vector<std::vector<INode::Entry>> namedEntries;    // FIXME: Is there a better representation?
+    std::vector<std::vector<Entry>> namedEntries;    // FIXME: Is there a better representation?
 
     /// Mounted filesystems
     std::vector<Mount> mounts;

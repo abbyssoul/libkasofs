@@ -18,6 +18,9 @@
 
 namespace kasofs {
 
+/**
+ * @brief Single operation permission
+ */
 struct Permissions {
     static Solace::byte const READ  = 0x4;		/* mode bit for read permission */
     static Solace::byte const WRITE = 0x2;		/* mode bit for write permission */
@@ -39,6 +42,9 @@ struct Permissions {
 };
 
 
+/**
+ * Unix style file permission for {Owner, Owner's group, Others}
+ */
 struct FilePermissions {
     static Solace::uint32 const USER  = 0700;		/// mode bits for user permissions
     static Solace::uint32 const GROUP = 0070;		/// mode bits for group permissions
@@ -61,6 +67,9 @@ struct FilePermissions {
 
 
 
+/**
+ * Bits to help with file mode encoding
+ */
 enum class DirMode : Solace::uint32 {
     DIR         = 0x80000000,	/* mode bit for directories */
     APPEND      = 0x40000000,	/* mode bit for append only files */
@@ -91,6 +100,10 @@ makeMode(DirMode type, Permissions user, Permissions group, Permissions others) 
     return makeMode(type, FilePermissions{user, group, others});
 }
 
+
+/**
+ * @brief Unix style file mode encoded into an uint32
+ */
 struct FileMode {
     static Solace::uint32 const IFMT = 0xF000;     /// File type bits
 
