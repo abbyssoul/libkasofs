@@ -11,7 +11,7 @@
  *	@file test/test_permissions.cpp
  *	@brief		Test suit for KasoFS::Credentials
  ******************************************************************************/
-#include "credentials.hpp"    // Class being tested.
+#include "kasofs/credentials.hpp"    // Class being tested.
 
 #include <gtest/gtest.h>
 
@@ -54,16 +54,16 @@ TEST(TestVfsPermissions, rwx_rwx_000) {
 TEST(TestVfsPermissions, r_x_r_x_r_x) {
     // -r-xr-xr-x / 0555
     EXPECT_TRUE(FilePermissions{0555}.user().isReadable());
-    EXPECT_TRUE(FilePermissions{0555}.user().isWritable());
-    EXPECT_FALSE(FilePermissions{0555}.user().isExecutable());
+    EXPECT_FALSE(FilePermissions{0555}.user().isWritable());
+    EXPECT_TRUE(FilePermissions{0555}.user().isExecutable());
 
     EXPECT_TRUE(FilePermissions{0555}.group().isReadable());
-    EXPECT_TRUE(FilePermissions{0555}.group().isWritable());
-    EXPECT_FALSE(FilePermissions{0555}.group().isExecutable());
+    EXPECT_FALSE(FilePermissions{0555}.group().isWritable());
+    EXPECT_TRUE(FilePermissions{0555}.group().isExecutable());
 
     EXPECT_TRUE(FilePermissions{0555}.others().isReadable());
-    EXPECT_TRUE(FilePermissions{0555}.others().isWritable());
-    EXPECT_FALSE(FilePermissions{0555}.others().isExecutable());
+    EXPECT_FALSE(FilePermissions{0555}.others().isWritable());
+    EXPECT_TRUE(FilePermissions{0555}.others().isExecutable());
 }
 
 

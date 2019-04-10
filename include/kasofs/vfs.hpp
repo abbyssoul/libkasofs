@@ -27,19 +27,33 @@
 
 namespace kasofs {
 
-struct VfsIndex {
-    Solace::uint32 vfsIndex;
-    Solace::uint32 nodexIndex;
-};
+using VfsID = Solace::uint32;
+using VNodeId = Solace::uint32;
 
+//struct VNodeId {
+////    VfsID           fsId;
+//    Solace::uint32  nodeId;
+//};
+
+//inline bool operator== (VNodeId const& lhs, VNodeId const& rhs) noexcept {
+//    return ((lhs.fsId == rhs.fsId) && (lhs.nodeId == rhs.nodeId));
+//}
+
+//inline bool operator!= (VNodeId const& lhs, VNodeId const& rhs) noexcept {
+//    return ((lhs.fsId != rhs.fsId) || (lhs.nodeId != rhs.nodeId));
+//}
+
+/**
+ * Directory entry
+ */
 struct Entry {
-    constexpr Entry(Solace::StringView n, VfsIndex i) noexcept
+    constexpr Entry(Solace::StringView n, VNodeId i) noexcept
         : name{n}
-        , index{i}
+        , nodeId{i}
     {}
 
     Solace::StringView  name;
-    VfsIndex            index;
+    VNodeId             nodeId;
 };
 
 
@@ -53,36 +67,82 @@ struct EntriesIterator {
 
 
 struct VfsOps {
+    using NodexIndex = Solace::uint32;
 
-    std::function<int(INode&)> read;
-    std::function<int(INode&)> write;
+    // Read for `regular` files
+    std::function<Solace::ByteReader(INode const&)> read{};
+    // Write for `regular` files
+    std::function<Solace::ByteWriter(INode const&)> write{};
 
-    std::function<Solace::Optional<Entry>(INode&, Solace::StringView)>   findEntry;
-    std::function<Solace::Optional<Solace::Error>(User, INode&, Solace::StringView, int)>   addEntry;
-    std::function<Solace::Optional<Solace::Error>(INode&, Solace::StringView)>   removeEntry;
-    std::function<EntriesIterator(INode&)>   listEntries;
+    // Read for directories
+//    std::function<Solace::Optional<Solace::Error>(User, NodexIndex, Solace::StringView, VNodeId)>  link{};
+//    std::function<Solace::Optional<Solace::Error>(NodexIndex, Solace::StringView)>                  unlink{};
 
-    std::function<Solace::Optional<INode*>(VfsIndex)>                  nodeById;
+//    std::function<Solace::Optional<INode*>(VNodeId)>                  nodeById{};
 };
 
 
 
-
-
+/**
+ * Virtual file system.
+ * File system - is a graph with named edges. Each node in the graph is either a file or a directory.
+ * Files are leafs of the graph. Directories - are regular vertices.
+ *
+ * Virtual file system allows creation of user defined graphs just like real file system. By default nodes
+ * do not persist as the graph is created entirely in memory.
+ *
+ * Much like moder file systems - VFS allows mouning of other VFSs at a given location in the graph. That is
+ * sub graph can be 'served' by a different file system.
+ *
+ * VFS also features simple ownerhip and permission model based on Unix uid & gid along with file access permissions.
+ *
+ * ```
+ * /// VFS level opeartions
+ * registerFileSystem
+ * unregisterFileSystem
+ * mount
+ * unmount
+ *
+ * /// Universal operations on nodes of the graph
+ * link
+ * unlink
+ * stat
+ * walk / namei
+ *
+ * // File operations
+ * createFile
+ * openFile
+ * read
+ * write
+ * close
+ *
+ * createDirectory
+ * openDirectory
+ * enumerateDirectory  // Equivalent of file's read
+ * close
+ * # Note: link is directory's write
+ * ```
+ *
+ */
 struct Vfs {
     static const Solace::StringLiteral kThisDir;
 
-    using index_type = VfsIndex;
     using size_type = std::vector<INode>::size_type;
 
     /**
      * Descriptor of a mounted vfs
      */
     struct Mount {
-        Solace::uint32  vfsIndex;
-        index_type      mountingPoint;
+        constexpr Mount(VfsID fsId, VNodeId nodeId) noexcept
+            : vfsIndex{fsId}
+            , mountingPoint{nodeId}
+        {}
+
+        VfsID       vfsIndex;
+        VNodeId     mountingPoint;
     };
 
+    struct OpenFileHandle{};
 
 public:
 
@@ -94,24 +154,36 @@ public:
     Vfs(Vfs&&) = default;
     Vfs& operator= (Vfs&&) noexcept = default;
 
-    INode& root();
-    INode const& root() const;
+    VNodeId rootId() const noexcept { return 0; }
+//    INode& root();
+//    INode const& root() const;
 
     /// @return Number of INode in the filesystem
-    size_type size() const noexcept { return inodes.size(); }
+//    size_type size() const noexcept { return inodes.size(); }
 
-    /**
-     * Find an inode by node Id.
-     * @param id inode number.
-     * @return Optional INode if given inode was found, none otherwise.
-     */
-    auto nodeById(index_type id) noexcept -> Solace::Optional<INode*>;
-    auto nodeById(index_type id) const noexcept -> Solace::Optional<INode const*>;
+    /////////////////////////////////////////////////////////////
+    /// VFS management
+    /////////////////////////////////////////////////////////////
+    Solace::Result<VfsID, Solace::Error>
+    registerFileSystem(VfsOps&& vfs);
+
+    Solace::Result<void, Solace::Error>
+    unregisterFileSystem(VfsID);
+
+    Solace::Result<void, Solace::Error>
+    mount(User user, VNodeId mountingPoint, VfsID fsId);
+
+    Solace::Result<void, Solace::Error>
+    umount(User user, VNodeId mountingPoint);
+
+    /////////////////////////////////////////////////////////////
+    /// Graph node linking
+    /////////////////////////////////////////////////////////////
 
     /**
      * Create a named link from inode A to inode B
      * @param user A user owner of the link. Note: this user must have write permission to the A inode where the link is added.
-     * @param linkName Name of the link. Directory entry name to identify inode B in A.
+     * @param name Name of the link. Directory entry name to identify inode B in A.
      * @param from The index of the directory node to link to B
      * @param to The index of the link target
      * @return Result<void> on success or an error.
@@ -122,53 +194,40 @@ public:
      * @note It is not an error to create multiple links to the same node B with different names.
      */
     Solace::Result<void, Solace::Error>
-    link(User user, Solace::StringView linkName, index_type from, index_type to);
+    link(User user, Solace::StringView name, VNodeId from, VNodeId to);
 
     /**
      * Unlink given name from the given node
      * @param user Credentials of the user performing the operation. Note: User must have write permission to the from node.
-     * @param linkName Name of the link to remove.
+     * @param name Name of the link to remove.
      * @param from Node a link should be removed from.
      * @return Void or error.
      */
     Solace::Result<void, Solace::Error>
-    unlink(User user, Solace::StringView linkName, index_type from);
-
-    /// Return iterator for directory entries of the give dirNode
-    Solace::Result<EntriesIterator, Solace::Error>
-    entries(User user, index_type dirNodeId) const;
+    unlink(User user, Solace::StringView name, VNodeId from);
 
     /**
-     * Create a node of the given type and link it to the specified root.
-     * @param user User - owner of a node to be created. Note this user must have write permission to the root.
-     * @param rootIndex - An index of the root node to link to new node.
-     * @param entName Name of the link from root node to the newly created node.
-     * @param perms Permission to be set for a newly created node.
-     * @param type - Type of the node to be created.
-     * @return Index of the new node on success or an error.
+     * Find an inode by node Id. Equivalent to FS stat call
+     * @param id inode number.
+     * @return Optional INode if given inode was found, none otherwise.
      */
-    Solace::Result<index_type, Solace::Error>
-    mknode(User user, index_type rootIndex, Solace::StringView entName, FilePermissions perms, INode::Type type);
+    auto nodeById(VNodeId id) noexcept -> Solace::Optional<INode*>;
+    auto nodeById(VNodeId id) const noexcept -> Solace::Optional<INode const*>;
 
-    Solace::Result<index_type, Solace::Error>
-    mount(User user, index_type mountingPoint, VfsOps&& vfs);
-
-    Solace::Result<index_type, Solace::Error>
-    umount(User user, index_type mountingPoint);
 
     Solace::Result<Entry, Solace::Error>
     walk(User user, Solace::Path const& path) const {
-        return walk(user, {0,0}, path);
+        return walk(user, rootId(), path);
     }
 
     Solace::Result<Entry, Solace::Error>
-    walk(User user, index_type rootId, Solace::Path const& path) const {
+    walk(User user, VNodeId rootId, Solace::Path const& path) const {
         return walk(user, rootId, path, [](auto const& ){});
     }
 
     template<typename F>
     Solace::Result<Entry, Solace::Error>
-    walk(User user, index_type rootId, Solace::Path const& path, F&& f) const {
+    walk(User user, VNodeId rootId, Solace::Path const& path, F&& f) const {
         auto maybeNode = nodeById(rootId);
         if (!maybeNode) {   // Valid file id required to start the walk
             return Err(makeError(Solace::GenericError::BADF , "walk"));
@@ -178,16 +237,16 @@ public:
         for (auto const& segment : path) {
             INode const* const node = *maybeNode;
             if (!node->userCan(user, Permissions::READ)) {
-                return Err(Solace::makeError(Solace::GenericError::PERM, "walk"));
+                return Err(makeError(Solace::GenericError::PERM, "walk"));
             }
 
-            auto maybeEntry = findEntry(*node, segment.view());
+            auto maybeEntry = lookup(resultingEntry.nodeId, segment.view());
             if (!maybeEntry) {
                 return Err(makeError(Solace::GenericError::NOENT, "walk"));
             }
 
             resultingEntry = *maybeEntry;
-            maybeNode = nodeById(resultingEntry.index);
+            maybeNode = nodeById(resultingEntry.nodeId);
             if (!maybeNode) {  // FIXME: It is fs consistency error if entry.index does not exist. Must be hadled here.
                 return Err(makeError(Solace::GenericError::NXIO, "walk"));
             }
@@ -198,46 +257,64 @@ public:
         return Solace::Ok(resultingEntry);
     }
 
+    /////////////////////////////////////////////////////////////
+    /// Directory management
+    /////////////////////////////////////////////////////////////
+    Solace::Result<VNodeId, Solace::Error>
+    createDirectory(VNodeId where, Solace::StringView name, User user, FilePermissions perms);
+
+    /// Return iterator for directory's entries of the give dirNode
+    Solace::Result<EntriesIterator, Solace::Error>
+    enumerateDirectory(VNodeId dirId, User user) const;
+
+    /////////////////////////////////////////////////////////////
+    /// File management/access
+    /////////////////////////////////////////////////////////////
+    Solace::Result<VNodeId, Solace::Error>
+    createFile(VNodeId where, Solace::StringView name, User user, FilePermissions perms);
+
+    /// Get a byte reader for the file content
+    Solace::Result<Solace::ByteReader, Solace::Error>
+    reader(User user, VNodeId fid);
+
+    /// Get a writer for the file content
+    Solace::Result<Solace::ByteWriter, Solace::Error>
+    writer(User user, VNodeId fid);
+
+    /**
+     * Create a node of the given type and link it to the specified root.
+     * @param user User - owner of a node to be created. Note this user must have write permission to the location.
+     * @param type - Type of the node to be created.
+     * @param perms Permission to be set for a newly created node.
+     * @param where - An index of the node that likes to the newly created one.
+     * @param name Name of the link from the 'where' node to the newly created node.
+     *
+     * @return Index of the new node on success or an error.
+     */
+    Solace::Result<VNodeId, Solace::Error>
+    mknode(INode::Type type, User user, FilePermissions perms, VNodeId where, Solace::StringView name);
+
 protected:
-    Solace::Result<void, Solace::Error>
-    link(User user, Solace::StringView linkName, INode& dir, index_type to);
 
     Solace::Result<FilePermissions, Solace::Error>
-    effectivePermissionsFor(User user, index_type rootIndex, FilePermissions perms, INode::Type type) {
-        auto maybeRoot = nodeById(rootIndex);
-        if (!maybeRoot) {
-            return Err(makeError(Solace::GenericError::NOENT , "mkNode"));
-        }
-
-        auto& dir = **maybeRoot;
-        if (!dir.userCan(user, Permissions::WRITE)) {
-            return Err(makeError(Solace::GenericError::PERM, "mkNode"));
-        }
-
-        auto const dirPerms = dir.permissions;
-        Solace::uint32 const permBase = (type == INode::Type::Data)
-                ? 0666
-                : 0777;
-
-        return Solace::Ok(FilePermissions{perms.value & (~permBase | (dirPerms.value & permBase))});
-    }
+    effectivePermissionsFor(User user, VNodeId rootIndex, FilePermissions perms, INode::Type type) const noexcept;
 
     /**
      * @brief Find directory entry in the given inode.
-     * @param node Node that should represent direcotry inode.
-     * @param name Name of the entry to find.
-     * @return Either an enry record or none.
+     * @param dirNodeId Id of the Node to search link from.
+     * @param name Name of the link to find.
+     * @return Either an entry record or none.
      */
     Solace::Optional<Entry>
-    findEntry(INode const& node, Solace::StringView name) const;
+    lookup(VNodeId dirNodeId, Solace::StringView name) const;
 
 private:
 
-    /// Index nodes - vertices of a graph
-    std::vector<INode> inodes;
+    /// Index nodes are vertices of a graph: e.g all addressable nodes
+    std::vector<INode> index;
 
     /// Directory entries - Named Graph edges
-    std::vector<std::vector<Entry>> namedEntries;    // FIXME: Is there a better representation?
+    std::vector<std::vector<Entry>> adjacencyList;
 
     /// Mounted filesystems
     std::vector<Mount> mounts;

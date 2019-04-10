@@ -35,6 +35,7 @@ struct INode {
         Data
     };
 
+    Solace::uint32      deviceId{0};        //!< Id of the `superblock` or
     User                owner;              //!< Owner of the node
     FilePermissions     permissions;        //!< Permissions and flags
 
@@ -44,9 +45,19 @@ struct INode {
     Solace::uint32      atime{0};           //!< last read time
     Solace::uint32      mtime{0};           //!< last write time
 
+    Solace::uint32      dataIndex{0};       //!< Index into buffers where data for this node leaves.
+    Solace::uint32      dataCount{0};       //!< Number of buffers owner by this node?
+
 public:
 
-    INode(Type type, User owner, FilePermissions perms, Solace::uint64 path = 0);
+    constexpr INode(Type type, User user, FilePermissions perms, Solace::uint64 id = 0) noexcept
+        : owner{user}
+        , permissions{perms}
+        , path{id}
+        , _type{type}
+    {
+
+    }
 
     /// Get type of the node
     Type type() const noexcept { return _type; }
@@ -63,12 +74,6 @@ public:
 
     /** @return Length of the file data in bytes */
     Solace::uint64 length() const noexcept;
-
-    //
-    // Data centric operations
-    //
-    Solace::Result<Solace::ByteWriter, Solace::Error> writer(User user) noexcept;
-    Solace::Result<Solace::ByteReader, Solace::Error> reader(User user) noexcept;
 
 private:
 

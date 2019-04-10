@@ -6,7 +6,7 @@
 *
 *  Written by Ivan Ryabov <abbyssoul@gmail.com>
 */
-#include "vinode.hpp"
+#include "kasofs/vinode.hpp"
 
 #include <solace/posixErrorDomain.hpp>
 
@@ -17,46 +17,36 @@ using namespace kasofs;
 using namespace Solace;
 
 
-INode::Type
-INode::type() const noexcept {
-    struct TypeVisitor {
-        constexpr Type operator() (INode::Dir  const& ) const noexcept { return Type::Directory; }
-        constexpr Type operator() (INode::Data const& ) const noexcept { return Type::Data; }
-        constexpr Type operator() (INode::Synth const& ) const noexcept { return Type::Synthetic; }
-        constexpr Type operator() (INode::SynthDir const& ) const noexcept { return Type::SyntheticDir; }
-    };
+//Result<void, Error>
+//INode::setPermissions(FilePermissions perms) noexcept {
+//    _meta.mode = _meta.mode.withPermissions(perms);
 
-    return std::visit(TypeVisitor{}, _nodeData);
-}
-
-
-Result<void, Error>
-INode::setPermissions(FilePermissions perms) noexcept {
-    _meta.mode = _meta.mode.withPermissions(perms);
-
-    return Ok();
-}
+//    return Ok();
+//}
 
 bool INode::userCan(User user, Permissions op) const noexcept {
-    auto const perms = (_meta.owner.uid == user.uid)
-            ? _meta.mode.permissions().user()
-            : (_meta.owner.gid == user.gid)
-              ? _meta.mode.permissions().group()
-              : _meta.mode.permissions().others();
+    auto const perms = (owner.uid == user.uid)
+            ? permissions.user()
+            : (owner.gid == user.gid)
+              ? permissions.group()
+              : permissions.others();
 
     return perms.can(op);
 }
 
 
 uint64 INode::length() const noexcept {
-    struct SizingVisitor {
-        uint64 operator() (INode::Data const& d) const noexcept { return d.length; }
-        uint64 operator() (INode::Dir const&) const noexcept { return 4096; }
-        uint64 operator() (INode::SynthDir const&) const noexcept { return 4096; }
-        uint64 operator() (INode::Synth const& /*d*/) const noexcept { return 0; }
-    };
+//    struct SizingVisitor {
+//        uint64 operator() (INode::Data const& d) const noexcept { return d.length; }
+//        uint64 operator() (INode::Dir const&) const noexcept { return 4096; }
+//        uint64 operator() (INode::SynthDir const&) const noexcept { return 4096; }
+//        uint64 operator() (INode::Synth const& /*d*/) const noexcept { return 0; }
+//    };
 
-    return std::visit(SizingVisitor{}, _nodeData);
+    // FIXME: Should be dataCount * blockSize;
+    return (_type == Type::Directory)
+            ? 4096
+            : dataCount; //std::visit(SizingVisitor{}, _nodeData);
 }
 
 /*
@@ -129,6 +119,8 @@ INode::entriesCount() const {
 }
 */
 
+
+/*
 Result<ByteReader, Error>
 INode::reader(User user) noexcept {
     struct DataAccessorVisitor {
@@ -162,7 +154,7 @@ INode::writer(User user) noexcept {
     _meta.mtime = std::time(nullptr);
     return Ok(std::visit(DataAccessorVisitor{}, _nodeData));
 }
-
+*/
 
 //MemoryView
 //INode::data() const noexcept {
@@ -194,7 +186,7 @@ INode::writer(User user) noexcept {
 //    return std::visit(DataAccessorVisitor{_meta}, _nodeData);
 //}
 
-
+/*
 void INode::Data::DataReadDisposer::dispose(MemoryView* view) const {
     MemoryView::size_type count = 0;
     for (; count < view->size(); ++count) {
@@ -219,3 +211,4 @@ ByteWriter INode::Data::writer() noexcept {
     disposer.self = this;
     return ByteWriter{MemoryResource{wrapMemory(buffer), &disposer}};
 }
+*/

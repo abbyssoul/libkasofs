@@ -132,6 +132,10 @@ struct FileMode {
 };
 
 
+inline bool operator== (FileMode const& lhs, FileMode const& rhs) noexcept { return (lhs.mode == rhs.mode); }
+inline bool operator!= (FileMode const& lhs, FileMode const& rhs) noexcept { return (lhs.mode != rhs.mode); }
+
+
 /**
  * User credentials
  */

@@ -11,7 +11,7 @@
  *	@file test/test_vinode.cpp
  *	@brief		Test suit for KasoFS::INode
  ******************************************************************************/
-#include "vinode.hpp"    // Class being tested.
+#include "kasofs/vinode.hpp"    // Class being tested.
 
 #include <gtest/gtest.h>
 
@@ -36,15 +36,4 @@ TEST(TestVfsINode, testDirectoryMeta) {
 
     EXPECT_EQ(0x80000000 | 0764, node.mode());
     EXPECT_EQ(4096, node.length());
-}
-
-TEST(TestVfsINode, testFileMeta) {
-    auto node = INode{INode::Type::Data, User{0,0}, FilePermissions{0666}};
-
-    EXPECT_EQ(0666, node.mode());
-    EXPECT_EQ(0, node.length());
-
-    char msg[] = "hello";
-    node.writer(node.owner).then([msg](auto&& writer) { writer.write(wrapMemory(msg)); });
-    EXPECT_EQ(5, node.length());
 }
