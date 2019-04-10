@@ -35,7 +35,7 @@ struct Permissions {
     constexpr bool isExecutable() const noexcept { return (value & EXEC) == EXEC; }
 
     constexpr bool can(Permissions op) const noexcept {
-        return (value & op.value);
+        return (value & op.value) == op.value;
     }
 
     Solace::byte const value;

@@ -20,18 +20,18 @@ using namespace kasofs;
 using namespace Solace;
 
 
-TEST(TestVfsINode, testContructor_Dir) {
+TEST(TestINode, testContructor_Dir) {
     auto node = INode{INode::Type::Directory, User{0,0}, FilePermissions{0666}};
     EXPECT_EQ(INode::Type::Directory, node.type());
 }
 
-TEST(TestVfsINode, testContructor_Data) {
+TEST(TestINode, testContructor_Data) {
     auto node = INode{INode::Type::Data, User{0,0}, FilePermissions{0666}};
     EXPECT_EQ(INode::Type::Data, node.type());
 }
 
 
-TEST(TestVfsINode, testDirectoryMeta) {
+TEST(TestINode, testDirectoryMeta) {
     auto node = INode{INode::Type::Directory, User{0,0}, FilePermissions{0764}};
 
     EXPECT_EQ(0x80000000 | 0764, node.mode());
