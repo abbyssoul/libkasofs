@@ -67,9 +67,7 @@ struct EntriesIterator {
 
 
 struct VfsOps {
-    using NodexIndex = Solace::uint32;
-
-    // Read for `regular` files
+    // Read  for `regular` files
     std::function<Solace::ByteReader(INode const&)> read{};
     // Write for `regular` files
     std::function<Solace::ByteWriter(INode const&)> write{};
@@ -155,8 +153,6 @@ public:
     Vfs& operator= (Vfs&&) noexcept = default;
 
     VNodeId rootId() const noexcept { return 0; }
-//    INode& root();
-//    INode const& root() const;
 
     /// @return Number of INode in the filesystem
 //    size_type size() const noexcept { return inodes.size(); }
