@@ -154,21 +154,42 @@ public:
 
     VNodeId rootId() const noexcept { return 0; }
 
-    /// @return Number of INode in the filesystem
-//    size_type size() const noexcept { return inodes.size(); }
-
     /////////////////////////////////////////////////////////////
     /// VFS management
     /////////////////////////////////////////////////////////////
-    Solace::Result<VfsID, Solace::Error>
+
+	/**
+	 * Register a new type of FS
+	 * @param vfs New virtual file system operations.
+	 * @return Id of the registered vfs or an error.
+	 */
+	Solace::Result<VfsID, Solace::Error>
     registerFileSystem(VfsOps&& vfs);
 
-    Solace::Result<void, Solace::Error>
-    unregisterFileSystem(VfsID);
+	/**
+	 * Un-Register previously registered vFS
+	 * @param vfsId Id of the previously registered vfs
+	 * @return Void or an error.
+	 */
+	Solace::Result<void, Solace::Error>
+	unregisterFileSystem(VfsID vfsId);
 
+	/**
+	 * Mount registered vfs to a given mount point.
+	 * @param user User credentials to perform the operation as.
+	 * @param mountingPoint INode where the vfs should be mounted.
+	 * @param fsId Id of the previously registered vfs.
+	 * @return Void or an error.
+	 */
     Solace::Result<void, Solace::Error>
     mount(User user, VNodeId mountingPoint, VfsID fsId);
 
+	/**
+	 * Unmount vfs from the given mounting point.
+	 * @param user User credentials to perform the operation as.
+	 * @param mountingPoint INode to unmount vfs from.
+	 * @return Void or an error.
+	 */
     Solace::Result<void, Solace::Error>
     umount(User user, VNodeId mountingPoint);
 
@@ -241,7 +262,7 @@ public:
                 return Err(makeError(Solace::GenericError::NOENT, "walk"));
             }
 
-            resultingEntry = *maybeEntry;
+			resultingEntry = maybeEntry.move();
             maybeNode = nodeById(resultingEntry.nodeId);
             if (!maybeNode) {  // FIXME: It is fs consistency error if entry.index does not exist. Must be hadled here.
                 return Err(makeError(Solace::GenericError::NXIO, "walk"));

@@ -111,12 +111,12 @@ Vfs::link(User user, StringView linkName, VNodeId from, VNodeId to) {
         return Err(makeError(GenericError::NOENT, "link:from"));
     }
 
-    auto& node = **maybeNode;
-    if (node.type() != INode::Type::Directory) {
+	auto& dirNode = **maybeNode;
+	if (dirNode.type() != INode::Type::Directory) {
         return Err(makeError(GenericError::NOTDIR, "link"));
     }
 
-    if (!node.userCan(user, Permissions::WRITE)) {
+	if (!dirNode.userCan(user, Permissions::WRITE)) {
         return Err(makeError(GenericError::PERM, "link"));
     }
 
@@ -126,7 +126,7 @@ Vfs::link(User user, StringView linkName, VNodeId from, VNodeId to) {
 
     // Add new entry:
     // TODO: Check dataIndex exist?
-    adjacencyList[node.dataIndex].emplace_back(linkName, to);
+	adjacencyList[dirNode.dataIndex].emplace_back(linkName, to);
 
     return Ok();
 }
@@ -164,12 +164,12 @@ Vfs::lookup(VNodeId dirNodeId, StringView name) const {
         return none;
     }
 
-    auto const& node = **maybeNode;
-    if (node.type() != INode::Type::Directory) {
+	auto const& dirNode = **maybeNode;
+	if (dirNode.type() != INode::Type::Directory) {
         return none;
     }
 
-    auto const& enties = adjacencyList[node.dataIndex];
+	auto const& enties = adjacencyList[dirNode.dataIndex];
     auto it = std::find_if(enties.begin(), enties.end(), [name](Entry const& e) { return e.name == name; });
 
     return (it == enties.end())
