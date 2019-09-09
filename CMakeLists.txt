@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.12)
 project(kasofs)
 set(PROJECT_DESCRIPTION "Virtual File system in modern C++")
 
