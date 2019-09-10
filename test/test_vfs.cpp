@@ -350,7 +350,7 @@ TEST(TestVfs, testWalk) {
 //}
 
 
-TEST(TestVfs, testFileWrireUpdatesSize) {
+TEST(TestVfs, testFileWriteUpdatesSize) {
     auto owner = User{0, 0};
     auto vfs = Vfs{owner, FilePermissions{0600}};
     auto maybeNodeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "data");
