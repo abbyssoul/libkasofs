@@ -123,7 +123,9 @@ struct VfsOps {
  *
  */
 struct Vfs {
-    static const Solace::StringLiteral kThisDir;
+	static Solace::StringLiteral const kThisDir;
+	static Solace::StringLiteral const kParentDir;
+
 
     using size_type = std::vector<INode>::size_type;
 
@@ -300,7 +302,7 @@ public:
 
     /**
      * Create a node of the given type and link it to the specified root.
-     * @param user User - owner of a node to be created. Note this user must have write permission to the location.
+	 * @param user Owner of the node to be created. Note this user must have write permission to the location.
      * @param type - Type of the node to be created.
      * @param perms Permission to be set for a newly created node.
      * @param where - An index of the node that likes to the newly created one.

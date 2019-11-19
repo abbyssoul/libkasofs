@@ -20,6 +20,15 @@ using namespace kasofs;
 using namespace Solace;
 
 
+TEST(TestVfsFileMode, modeEquality) {
+	// -rwx------ / 0700
+	EXPECT_TRUE(0700 == FileMode{0700});
+
+	EXPECT_TRUE(FileMode(FileTypeMask::Dir, 0700).isDirectory());
+	EXPECT_TRUE(FileMode(FileTypeMask::File, 0700).isFile());
+}
+
+
 TEST(TestVfsPermissions, rwx_000_000) {
     // -rwx------ / 0700
     EXPECT_TRUE(FilePermissions{0700}.user().isReadable());

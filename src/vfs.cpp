@@ -16,21 +16,21 @@ using namespace Solace;
 
 
 const StringLiteral Vfs::kThisDir{"."};
-//static const StringLiteral kParentDir("..");
+const StringLiteral Vfs::kParentDir("..");
 
 
 static VfsOps ramFS {
-    .read  = [](INode const&) -> ByteReader { return {}; },
-    .write = [](INode const&) -> ByteWriter { return {}; }
+	[](INode const&) -> ByteReader { return {}; },
+	[](INode const&) -> ByteWriter { return {}; }
 };
 
 
 Vfs::Vfs(User owner, FilePermissions rootPerms)
-    : index{{INode{INode::Type::Directory, owner, rootPerms, 0}}}
+	: index{{INode{INode::Type::Directory, owner, rootPerms}}}
     , adjacencyList{1}
     , vfs{ {ramFS} }
 {
-    auto& root = index[0];
+	auto& root = index[0];  // Adjust root node to point to first data block
     root.dataIndex = 0;
     root.dataCount = 1;
 }
@@ -285,20 +285,21 @@ Vfs::mknode(INode::Type type, User owner, FilePermissions perms, VNodeId where, 
         return Err(maybePermissions.getError());
     }
 
+	auto const effectivePermissions = *maybePermissions;
     auto const nextIndex = index.size();
     auto const newNodeIndex = VNodeId{static_cast<uint32>(nextIndex)};
     switch (type) {
     case INode::Type::Directory: {
-         auto& node = index.emplace_back(INode::Type::Directory, owner, *maybePermissions, nextIndex);
+		 auto& node = index.emplace_back(INode::Type::Directory, owner, effectivePermissions, nextIndex);
          node.dataIndex = adjacencyList.size();
          adjacencyList.emplace_back();
         } break;
     case INode::Type::Data: {
-        index.emplace_back(INode::Type::Data, owner, *maybePermissions, nextIndex);
+		index.emplace_back(INode::Type::Data, owner, effectivePermissions, nextIndex);
         } break;
     }
 
-    // Link   
+	// Link
     nodeById(where)
             .map([this, name, newNodeIndex](auto& parent) {
                 adjacencyList[parent->dataIndex].emplace_back(name, newNodeIndex);
@@ -322,10 +323,10 @@ Vfs::effectivePermissionsFor(User user, VNodeId rootIndex, FilePermissions perms
         return Err(makeError(GenericError::PERM, "mkNode"));
     }
 
-    auto const dirPerms = dir.permissions;
+	uint32 const dirPerms = dir.permissions.value;
     uint32 const permBase = (type == INode::Type::Directory)
             ? 0666
             : 0777;
 
-    return Ok(FilePermissions{perms.value & (~permBase | (dirPerms.value & permBase))});
+	return Ok(FilePermissions{perms.value & (~permBase | (dirPerms & permBase))});
 }

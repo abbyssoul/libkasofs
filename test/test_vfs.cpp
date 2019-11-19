@@ -289,23 +289,23 @@ TEST(TestVfs, testWalk) {
 //    ASSERT_EQ(8, vfs.size());
 
     int count = 0;
-    EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), makePath("dir0"), [&count](auto const&) { count += 1; }));
+	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(1, count);
 
     count = 0;
-    EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), makePath("dir0", "data0"), [&count](auto const&) { count += 1; }));
+	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0", "data0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(2, count);
 
     count = 0;
-    EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), makePath("dir0", "dir0"), [&count](auto const&) { count += 1; }));
+	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0", "dir0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(2, count);
 
     count = 0;
-    EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
+	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(2, count);
 
     count = -3;
-    EXPECT_FALSE(vfs.walk(User{32,0}, vfs.rootId(), makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
+	EXPECT_FALSE(vfs.walk(User{32,0}, vfs.rootId(), *makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(-3, count);
 }
 
@@ -360,8 +360,9 @@ TEST(TestVfs, testFileWriteUpdatesSize) {
         auto maybeNode = vfs.nodeById(*maybeNodeId);
         ASSERT_TRUE(maybeNode);
 
-        auto& node = **maybeNode;
-        EXPECT_EQ(0666, node.mode());
+		auto const& node = **maybeNode;
+		EXPECT_TRUE(node.mode().isFile());
+		EXPECT_EQ(0600, node.mode().permissions());
         EXPECT_EQ(0, node.length());
     }
 

@@ -65,8 +65,8 @@ public:
     /// Get type of the node
     FileMode mode() const noexcept {
         return (_type == Type::Directory)
-                ? FileMode{DirMode::DIR, permissions}
-                : FileMode{DirMode::REGULAR, permissions};
+				? FileMode{FileTypeMask::Dir, permissions}
+				: FileMode{FileTypeMask::File, permissions};
     }
 
     /// Test if a given user can perform operation

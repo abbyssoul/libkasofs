@@ -34,6 +34,6 @@ TEST(TestINode, testContructor_Data) {
 TEST(TestINode, testDirectoryMeta) {
     auto node = INode{INode::Type::Directory, User{0,0}, FilePermissions{0764}};
 
-    EXPECT_EQ(0x80000000 | 0764, node.mode());
+	EXPECT_EQ(040000 | 0764, node.mode());
     EXPECT_EQ(4096, node.length());
 }
