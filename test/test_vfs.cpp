@@ -25,8 +25,9 @@ TEST(TestVfs, testContructor) {
 
     auto root = vfs.nodeById(vfs.rootId());
     ASSERT_TRUE(root.isSome());
-    EXPECT_EQ(INode::Type::Directory, (*root)->type());
+	EXPECT_EQ(INode::Type::Directory, (*root).type());
 }
+
 
 TEST(TestVfs, testMountingRO_FS) {
     auto user = User{0,0};
@@ -138,7 +139,7 @@ TEST(TestVfs, testMakingNodes) {
     // Make a regular data node
 //    EXPECT_EQ(1, vfs.size());
     auto maybeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "id");
-    EXPECT_TRUE(maybeId.isOk());
+	EXPECT_TRUE(maybeId.isOk());
 //    EXPECT_EQ(2, vfs.size());
 //    EXPECT_EQ(1, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
@@ -350,6 +351,21 @@ TEST(TestVfs, testWalk) {
 //}
 
 
+TEST(TestVfs, testPremissionsInheritence) {
+	auto owner = User{0, 0};
+	auto vfs = Vfs{owner, FilePermissions{0600}};
+
+	auto maybeNodeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "data");
+	auto maybeNode = vfs.nodeById(maybeNodeId);
+	ASSERT_TRUE(maybeNode);
+
+	auto const& node = *maybeNode;
+	EXPECT_TRUE(node.mode().isFile());
+	EXPECT_EQ(0600, node.mode().permissions());
+	EXPECT_EQ(0, node.length());
+}
+
+
 TEST(TestVfs, testFileWriteUpdatesSize) {
     auto owner = User{0, 0};
     auto vfs = Vfs{owner, FilePermissions{0600}};
@@ -357,10 +373,10 @@ TEST(TestVfs, testFileWriteUpdatesSize) {
     ASSERT_TRUE(maybeNodeId);
 
     {
-        auto maybeNode = vfs.nodeById(*maybeNodeId);
+		auto maybeNode = vfs.nodeById(maybeNodeId);
         ASSERT_TRUE(maybeNode);
 
-		auto const& node = **maybeNode;
+		auto const& node = *maybeNode;
 		EXPECT_TRUE(node.mode().isFile());
 		EXPECT_EQ(0600, node.mode().permissions());
         EXPECT_EQ(0, node.length());
@@ -373,7 +389,7 @@ TEST(TestVfs, testFileWriteUpdatesSize) {
     {
         auto maybeNode = vfs.nodeById(*maybeNodeId);
         ASSERT_TRUE(maybeNode);
-        auto& node = **maybeNode;
+		auto& node = *maybeNode;
         EXPECT_EQ(5, node.length());
     }
 }

@@ -16,12 +16,6 @@
 
 #include "credentials.hpp"
 
-#include <solace/result.hpp>
-#include <solace/error.hpp>
-
-#include <solace/byteReader.hpp>
-#include <solace/byteWriter.hpp>
-
 
 namespace kasofs {
 
@@ -56,8 +50,27 @@ public:
         , path{id}
         , _type{type}
     {
-
     }
+
+	INode& swap(INode& rhs) noexcept {
+		using std::swap;
+
+		swap(deviceId, rhs.deviceId);
+		swap(owner, rhs.owner);
+		swap(permissions, rhs.permissions);
+
+		swap(path, rhs.path);
+		swap(version, rhs.version);
+
+		swap(atime, rhs.atime);
+		swap(mtime, rhs.mtime);
+
+		swap(dataIndex, rhs.dataIndex);
+		swap(dataCount, rhs.dataCount);
+		swap(_type, rhs._type);
+
+		return *this;
+	}
 
     /// Get type of the node
     Type type() const noexcept { return _type; }
@@ -82,58 +95,9 @@ private:
 };
 
 
-//inline
-//auto initMeta(INode::TypeTag<INode::Type::Directory>, User owner, Solace::uint64 path, FilePermissions perms) noexcept {
-//    return INode::Meta{path, owner, {DirMode::DIR, perms}};
-//}
-
-//inline
-//auto initMeta(INode::TypeTag<INode::Type::Data>, User owner, Solace::uint64 path, FilePermissions perms) noexcept {
-//    return INode::Meta{path, owner, {DirMode::REGULAR, perms}};
-//}
-
-//inline
-//auto initMeta(INode::TypeTag<INode::Type::Synthetic>, User owner, Solace::uint64 path, FilePermissions perms) noexcept {
-//    return INode::Meta{path, owner, {DirMode::TMP, perms}};
-//}
-
-//inline
-//auto initMeta(INode::TypeTag<INode::Type::SyntheticDir>, User owner, Solace::uint64 path, FilePermissions perms) noexcept {
-//    return INode::Meta{path, owner, {DirMode::DIR, perms}};
-//}
-
-
-
-//template<>
-//inline
-//INode::INode(INode::TypeTag<INode::Type::Directory> tag, User owner, Solace::uint64 path, FilePermissions perms)
-//    : _meta{initMeta(tag, owner, path, perms)}
-//    , _nodeData{std::in_place_type<INode::Dir>}
-//{}
-
-
-//template<>
-//inline
-//INode::INode(INode::TypeTag<INode::Type::Data> tag, User owner, Solace::uint64 path, FilePermissions perms)
-//    : _meta{initMeta(tag, owner, path, perms)}
-//    , _nodeData{std::in_place_type<INode::Data>}
-//{ }
-
-
-//template<typename R,
-//         typename W>
-//inline
-//INode::INode(User owner, Solace::uint64 path, FilePermissions perms, R&& r, W&& w)
-//    : _meta{initMeta(INode::TypeTag<INode::Type::Synthetic>{}, owner, path, perms)}
-//    , _nodeData{std::in_place_type<INode::Synth>, std::forward<R>(r), std::forward<W>(w)}
-//{ }
-
-//template<typename F>
-//inline
-//INode::INode(User owner, Solace::uint64 path, FilePermissions perms, F&& f)
-//    : _meta{initMeta(INode::TypeTag<INode::Type::SyntheticDir>{}, owner, path, perms)}
-//    , _nodeData{std::in_place_type<INode::SynthDir>, std::forward<F>(f)}
-//{ }
+inline void swap(INode& lhs, INode& rhs) noexcept {
+	lhs.swap(rhs);
+}
 
 }  // namespace kasofs
 #endif  // KASOFS_VINODE_HPP

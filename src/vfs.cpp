@@ -67,7 +67,7 @@ Vfs::mount(User user, VNodeId mountingPoint, VfsID fs) {
         return Err(makeError(GenericError::BADF, "mount"));
     }
 
-    auto& dir = **maybeMountingPoint;
+	auto& dir = *maybeMountingPoint;
     if (!dir.userCan(user, Permissions::WRITE)) {
         return Err(makeError(GenericError::PERM, "mount"));
     }
@@ -85,7 +85,7 @@ Vfs::umount(User user, VNodeId mountingPoint) {
         return Err(makeError(GenericError::BADF, "mount"));
     }
 
-    auto& dir = **maybeMountingPoint;
+	auto& dir = *maybeMountingPoint;
     if (!dir.userCan(user, Permissions::WRITE)) {
         return Err(makeError(GenericError::PERM, "mount"));
     }
@@ -111,7 +111,7 @@ Vfs::link(User user, StringView linkName, VNodeId from, VNodeId to) {
         return Err(makeError(GenericError::NOENT, "link:from"));
     }
 
-	auto& dirNode = **maybeNode;
+	auto& dirNode = *maybeNode;
 	if (dirNode.type() != INode::Type::Directory) {
         return Err(makeError(GenericError::NOTDIR, "link"));
     }
@@ -139,7 +139,7 @@ Vfs::unlink(User user, StringView name, VNodeId from) {
         return Err(makeError(GenericError::BADF, "unlink"));
     }
 
-    auto& node = **maybeNode;
+	auto& node = *maybeNode;
     if (node.type() != INode::Type::Directory) {
         return Err(makeError(GenericError::NOTDIR, "unlink"));
     }
@@ -164,7 +164,7 @@ Vfs::lookup(VNodeId dirNodeId, StringView name) const {
         return none;
     }
 
-	auto const& dirNode = **maybeNode;
+	auto const& dirNode = *maybeNode;
 	if (dirNode.type() != INode::Type::Directory) {
         return none;
     }
@@ -178,22 +178,13 @@ Vfs::lookup(VNodeId dirNodeId, StringView name) const {
 }
 
 
-Optional<INode*>
-Vfs::nodeById(VNodeId id) noexcept {
-    if (id >= index.size()) {
-        return none;
-    }
-
-    return &(index.at(id));
-}
-
-Optional<INode const*>
+Optional<INode>
 Vfs::nodeById(VNodeId id) const noexcept {
     if (id >= index.size()) {
         return none;
     }
 
-    return &(index.at(id));
+	return index.at(id);
 }
 
 
@@ -210,7 +201,7 @@ Vfs::enumerateDirectory(VNodeId dirNodeId, User user) const {
         return Err(makeError(GenericError::BADF, "enumerateDirectory"));
     }
 
-    auto& dir = **maybeNode;
+	auto& dir = *maybeNode;
     if (dir.type() != INode::Type::Directory) {
         return Err(makeError(GenericError::NOTDIR, "enumerateDirectory"));
     }
@@ -237,7 +228,7 @@ Vfs::reader(User user, VNodeId nodeId) {
         return Err(makeError(GenericError::BADF, "reader"));
     }
 
-    auto& node = **maybeNode;
+	auto& node = *maybeNode;
     if (node.type() != INode::Type::Data) {
         return Err(makeError(GenericError::ISDIR, "reader"));
     }
@@ -261,12 +252,12 @@ Vfs::writer(User user, VNodeId nodeId) {
         return Err(makeError(GenericError::BADF, "writer"));
     }
 
-    auto& node = **maybeNode;
+	auto& node = *maybeNode;
     if (node.type() != INode::Type::Data) {
         return Err(makeError(GenericError::ISDIR, "writer"));
     }
 
-    if (!node.userCan(user, Permissions::READ)) {
+	if (!node.userCan(user, Permissions::WRITE)) {
         return Err(makeError(GenericError::PERM, "writer"));
     }
 
@@ -302,7 +293,7 @@ Vfs::mknode(INode::Type type, User owner, FilePermissions perms, VNodeId where, 
 	// Link
     nodeById(where)
             .map([this, name, newNodeIndex](auto& parent) {
-                adjacencyList[parent->dataIndex].emplace_back(name, newNodeIndex);
+				adjacencyList[parent.dataIndex].emplace_back(name, newNodeIndex);
                 return 0;
             });
 
@@ -318,7 +309,7 @@ Vfs::effectivePermissionsFor(User user, VNodeId rootIndex, FilePermissions perms
         return Err(makeError(GenericError::NOENT , "mkNode"));
     }
 
-    auto const& dir = **maybeRoot;
+	auto const& dir = *maybeRoot;
     if (!dir.userCan(user, Permissions::WRITE)) {
         return Err(makeError(GenericError::PERM, "mkNode"));
     }

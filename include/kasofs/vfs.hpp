@@ -16,10 +16,15 @@
 
 #include "vinode.hpp"
 
-#include <solace/path.hpp>
+
 #include <solace/result.hpp>
 #include <solace/error.hpp>
 #include <solace/posixErrorDomain.hpp>
+
+#include <solace/byteReader.hpp>
+#include <solace/byteWriter.hpp>
+
+#include <solace/path.hpp>
 
 #include <vector>
 #include <functional>   // FIXME: Review - is it the best implementation?
@@ -29,6 +34,8 @@ namespace kasofs {
 
 using VfsID = Solace::uint32;
 using VNodeId = Solace::uint32;
+
+using Error = Solace::Error;
 
 //struct VNodeId {
 ////    VfsID           fsId;
@@ -73,8 +80,8 @@ struct VfsOps {
     std::function<Solace::ByteWriter(INode const&)> write{};
 
     // Read for directories
-//    std::function<Solace::Optional<Solace::Error>(User, NodexIndex, Solace::StringView, VNodeId)>  link{};
-//    std::function<Solace::Optional<Solace::Error>(NodexIndex, Solace::StringView)>                  unlink{};
+//    std::function<Solace::Optional<Error>(User, NodexIndex, Solace::StringView, VNodeId)>  link{};
+//    std::function<Solace::Optional<Error>(NodexIndex, Solace::StringView)>                  unlink{};
 
 //    std::function<Solace::Optional<INode*>(VNodeId)>                  nodeById{};
 };
@@ -165,7 +172,7 @@ public:
 	 * @param vfs New virtual file system operations.
 	 * @return Id of the registered vfs or an error.
 	 */
-	Solace::Result<VfsID, Solace::Error>
+	Solace::Result<VfsID, Error>
     registerFileSystem(VfsOps&& vfs);
 
 	/**
@@ -173,7 +180,7 @@ public:
 	 * @param vfsId Id of the previously registered vfs
 	 * @return Void or an error.
 	 */
-	Solace::Result<void, Solace::Error>
+	Solace::Result<void, Error>
 	unregisterFileSystem(VfsID vfsId);
 
 	/**
@@ -183,7 +190,7 @@ public:
 	 * @param fsId Id of the previously registered vfs.
 	 * @return Void or an error.
 	 */
-    Solace::Result<void, Solace::Error>
+	Solace::Result<void, Error>
     mount(User user, VNodeId mountingPoint, VfsID fsId);
 
 	/**
@@ -192,7 +199,7 @@ public:
 	 * @param mountingPoint INode to unmount vfs from.
 	 * @return Void or an error.
 	 */
-    Solace::Result<void, Solace::Error>
+	Solace::Result<void, Error>
     umount(User user, VNodeId mountingPoint);
 
     /////////////////////////////////////////////////////////////
@@ -212,7 +219,7 @@ public:
      *
      * @note It is not an error to create multiple links to the same node B with different names.
      */
-    Solace::Result<void, Solace::Error>
+	Solace::Result<void, Error>
     link(User user, Solace::StringView name, VNodeId from, VNodeId to);
 
     /**
@@ -222,7 +229,7 @@ public:
      * @param from Node a link should be removed from.
      * @return Void or error.
      */
-    Solace::Result<void, Solace::Error>
+	Solace::Result<void, Error>
     unlink(User user, Solace::StringView name, VNodeId from);
 
     /**
@@ -230,22 +237,27 @@ public:
      * @param id inode number.
      * @return Optional INode if given inode was found, none otherwise.
      */
-    auto nodeById(VNodeId id) noexcept -> Solace::Optional<INode*>;
-    auto nodeById(VNodeId id) const noexcept -> Solace::Optional<INode const*>;
+	auto nodeById(VNodeId id) const noexcept -> Solace::Optional<INode>;
+
+	auto nodeById(Solace::Result<VNodeId, Error> const& maybeId) const noexcept {
+		return maybeId
+				? nodeById(*maybeId)
+				: Solace::none;
+	}
 
 
-    Solace::Result<Entry, Solace::Error>
+	Solace::Result<Entry, Error>
     walk(User user, Solace::Path const& path) const {
         return walk(user, rootId(), path);
     }
 
-    Solace::Result<Entry, Solace::Error>
+	Solace::Result<Entry, Error>
     walk(User user, VNodeId rootId, Solace::Path const& path) const {
         return walk(user, rootId, path, [](auto const& ){});
     }
 
     template<typename F>
-    Solace::Result<Entry, Solace::Error>
+	Solace::Result<Entry, Error>
     walk(User user, VNodeId rootId, Solace::Path const& path, F&& f) const {
         auto maybeNode = nodeById(rootId);
         if (!maybeNode) {   // Valid file id required to start the walk
@@ -254,8 +266,8 @@ public:
 
         auto resultingEntry = Entry{kThisDir, rootId};
         for (auto const& segment : path) {
-            INode const* const node = *maybeNode;
-            if (!node->userCan(user, Permissions::READ)) {
+			INode node = *maybeNode;
+			if (!node.userCan(user, Permissions::READ)) {
                 return Err(makeError(Solace::GenericError::PERM, "walk"));
             }
 
@@ -270,7 +282,7 @@ public:
                 return Err(makeError(Solace::GenericError::NXIO, "walk"));
             }
 
-            f(**maybeNode);
+			f(*maybeNode);
         }
 
         return Solace::Ok(resultingEntry);
@@ -279,25 +291,25 @@ public:
     /////////////////////////////////////////////////////////////
     /// Directory management
     /////////////////////////////////////////////////////////////
-    Solace::Result<VNodeId, Solace::Error>
+	Solace::Result<VNodeId, Error>
     createDirectory(VNodeId where, Solace::StringView name, User user, FilePermissions perms);
 
     /// Return iterator for directory's entries of the give dirNode
-    Solace::Result<EntriesIterator, Solace::Error>
+	Solace::Result<EntriesIterator, Error>
     enumerateDirectory(VNodeId dirId, User user) const;
 
     /////////////////////////////////////////////////////////////
     /// File management/access
     /////////////////////////////////////////////////////////////
-    Solace::Result<VNodeId, Solace::Error>
+	Solace::Result<VNodeId, Error>
     createFile(VNodeId where, Solace::StringView name, User user, FilePermissions perms);
 
     /// Get a byte reader for the file content
-    Solace::Result<Solace::ByteReader, Solace::Error>
+	Solace::Result<Solace::ByteReader, Error>
     reader(User user, VNodeId fid);
 
     /// Get a writer for the file content
-    Solace::Result<Solace::ByteWriter, Solace::Error>
+	Solace::Result<Solace::ByteWriter, Error>
     writer(User user, VNodeId fid);
 
     /**
@@ -310,12 +322,12 @@ public:
      *
      * @return Index of the new node on success or an error.
      */
-    Solace::Result<VNodeId, Solace::Error>
-    mknode(INode::Type type, User user, FilePermissions perms, VNodeId where, Solace::StringView name);
+	Solace::Result<VNodeId, Error>
+	mknode(INode::Type type, User user, FilePermissions perms, VNodeId where, Solace::StringView name);
 
 protected:
 
-    Solace::Result<FilePermissions, Solace::Error>
+	Solace::Result<FilePermissions, Error>
     effectivePermissionsFor(User user, VNodeId rootIndex, FilePermissions perms, INode::Type type) const noexcept;
 
     /**

@@ -16,6 +16,8 @@
 
 #include <solace/types.hpp>
 
+#include <utility>
+
 namespace kasofs {
 
 /**
@@ -68,7 +70,7 @@ struct FilePermissions {
     Permissions group() const noexcept  { return {static_cast<Solace::byte>((value & GROUP) >> 3)}; }
     Permissions others() const noexcept  { return {static_cast<Solace::byte>((value & OTHER) >> 0)}; }
 
-    Solace::uint32 const    value;
+	Solace::uint32 value;
 };
 
 inline constexpr
@@ -77,7 +79,10 @@ bool operator== (FilePermissions const& lhs, FilePermissions const& rhs) noexcep
 inline constexpr
 bool operator!= (FilePermissions const& lhs, FilePermissions const& rhs) noexcept { return (lhs.value != rhs.value); }
 
-
+inline
+void swap(FilePermissions& lhs, FilePermissions& rhs) noexcept {
+	std::swap(lhs.value, rhs.value);
+}
 
 /**
  * Bits to help with file mode encoding
@@ -174,6 +179,12 @@ bool operator== (User const& lhs, User const& rhs) noexcept { return ((lhs.uid =
 
 inline constexpr
 bool operator!= (User const& lhs, User const& rhs) noexcept { return ((lhs.uid != rhs.uid) || (lhs.gid != rhs.gid)); }
+
+inline
+void swap(User& lhs, User& rhs) noexcept {
+	std::swap(lhs.uid, rhs.uid);
+	std::swap(lhs.gid, rhs.gid);
+}
 
 }  // namespace kasofs
 #endif  // KASOFS_CREDENTIALS_HPP
