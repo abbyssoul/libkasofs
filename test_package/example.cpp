@@ -6,11 +6,11 @@ int main() {
     auto owner = kasofs::User{0, 0};
     auto vfs = kasofs::Vfs{owner, kasofs::FilePermissions{0707}};
 
-    auto const maybeRoot = vfs.nodeById(vfs.rootId());
+    auto maybeRoot = vfs.nodeById(vfs.rootId());
     if (!maybeRoot)
         return EXIT_FAILURE;
 
-    return (*maybeRoot)->userCan(owner, kasofs::Permissions::WRITE)
+    return (*maybeRoot).userCan(owner, kasofs::Permissions::WRITE)
             ? EXIT_SUCCESS
             : EXIT_FAILURE;
 }

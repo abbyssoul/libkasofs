@@ -8,7 +8,7 @@ from conans import ConanFile, CMake
 
 class LibkasofsConan(ConanFile):
     name = "libkasofs"
-    version = "0.1"
+    version = "0.2"
     license = "Apache-2.0"
     author = "Ivan Ryabov <abbyssoul@gmail.com>"
     url = "https://github.com/abbyssoul/%s.git" % name
