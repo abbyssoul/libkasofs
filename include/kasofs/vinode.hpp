@@ -19,78 +19,78 @@
 
 namespace kasofs {
 
+using VfsId = Solace::uint32;
+using VfsNodeType = Solace::uint32;
+
 /**
  * Node of a virtual file system
  */
 struct INode {
 
-    enum class Type : Solace::byte {
-        Directory = 0,
-        Data
-    };
+	using Id = Solace::uint32;
+	using VfsData = Solace::uint64;
+	using size_type = Solace::uint64;
 
-    Solace::uint32      deviceId{0};        //!< Id of the `superblock` or
+	Id					nodeId;			//!< Id of the node used vfs owning it.
+
+	VfsId				fsTypeId;			//!< Id of the vfs type of the node
+	VfsNodeType			nodeTypeId;			//!< FS specific type of the node
+
     User                owner;              //!< Owner of the node
     FilePermissions     permissions;        //!< Permissions and flags
 
-    Solace::uint64      path{0};            //!< Id of the node used vfs owning it.
-    Solace::uint32      version{0};         //!< Version of the node
 
     Solace::uint32      atime{0};           //!< last read time
     Solace::uint32      mtime{0};           //!< last write time
 
-    Solace::uint32      dataIndex{0};       //!< Index into buffers where data for this node leaves.
-    Solace::uint32      dataCount{0};       //!< Number of buffers owner by this node?
+	Solace::uint32      version{0};         //!< Version of the node
+	VfsData				vfsData;         //!< Data storage used by vfs.
+	size_type			dataSize{0};         //!< Size of the data stored by vfs
 
 public:
 
-    constexpr INode(Type type, User user, FilePermissions perms, Solace::uint64 id = 0) noexcept
-        : owner{user}
+	constexpr INode(Id id, VfsId major, VfsNodeType minor, VfsData data, User user, FilePermissions perms) noexcept
+		: nodeId{id}
+		, fsTypeId{major}
+		, nodeTypeId{minor}
+		, owner{user}
         , permissions{perms}
-        , path{id}
-        , _type{type}
+		, vfsData{data}
     {
     }
 
 	INode& swap(INode& rhs) noexcept {
 		using std::swap;
 
-		swap(deviceId, rhs.deviceId);
+		swap(nodeId, rhs.nodeId);
+		swap(fsTypeId, rhs.fsTypeId);
+		swap(nodeTypeId, rhs.nodeTypeId);
+
 		swap(owner, rhs.owner);
 		swap(permissions, rhs.permissions);
 
-		swap(path, rhs.path);
 		swap(version, rhs.version);
 
 		swap(atime, rhs.atime);
 		swap(mtime, rhs.mtime);
 
-		swap(dataIndex, rhs.dataIndex);
-		swap(dataCount, rhs.dataCount);
-		swap(_type, rhs._type);
+		swap(vfsData, rhs.vfsData);
+		swap(dataSize, rhs.dataSize);
 
 		return *this;
 	}
 
-    /// Get type of the node
-    Type type() const noexcept { return _type; }
+	/// Test if a given user can perform operation
+	constexpr bool userCan(User user, Permissions action) const noexcept {
+		return canUserPerformAction(owner, permissions, user, action);
+	}
 
-    /// Get type of the node
-    FileMode mode() const noexcept {
-        return (_type == Type::Directory)
-				? FileMode{FileTypeMask::Dir, permissions}
-				: FileMode{FileTypeMask::File, permissions};
-    }
-
-    /// Test if a given user can perform operation
-    bool userCan(User user, Permissions perms) const noexcept;
-
-    /** @return Length of the file data in bytes */
-    Solace::uint64 length() const noexcept;
-
-private:
-
-    Type                _type;              //!< Type of the node
+	/// Get type of the node
+//    FileMode mode() const noexcept {
+//        return (_type == Type::Directory)
+//				? FileMode{FileTypeMask::Dir, permissions}
+//				: FileMode{FileTypeMask::File, permissions};
+//    }
 
 };
 

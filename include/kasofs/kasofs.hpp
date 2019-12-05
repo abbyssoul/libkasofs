@@ -16,6 +16,7 @@
 #define KASOFS_HPP
 
 #include "vinode.hpp"
+#include "fs.hpp"
 #include "vfs.hpp"
 
 #endif  // KASOFS_HPP

@@ -14,10 +14,81 @@
 #include "kasofs/vfs.hpp"    // Class being tested.
 
 #include <gtest/gtest.h>
+#include <solace/output_utils.hpp>
 
 
 using namespace kasofs;
 using namespace Solace;
+
+struct MockFs: public Filesystem {
+	static uint32 dataType() noexcept {
+		return 312;
+	}
+
+	MockFs(const char* str)
+		: buffer{str}
+	{}
+
+	Result<INode::VfsData, Error> createNode(NodeType /*type*/) override {
+		return Ok<INode::VfsData>(0);
+	}
+
+	FilePermissions defaultFilePermissions(NodeType) const noexcept override {
+		return FilePermissions{0777};
+	}
+
+	auto open(INode, Permissions) -> Result<OpenFID, Error> override {
+		return Ok<OpenFID>(0);
+	}
+
+	Result<size_type, Error> read(INode, size_type offset, MutableMemoryView dest) override {
+		if (offset >= buffer.size())
+			return makeError(BasicError::Overflow, "MockFs::read");
+
+		auto data = wrapMemory(buffer.data() + offset, buffer.size() - offset).slice(0, dest.size());
+		auto isOk = dest.write(data);
+		if (!isOk) {
+			return isOk.moveError();
+		}
+
+		return Ok(data.size());
+	}
+
+	Result<size_type, Error> write(INode, size_type offset, MemoryView src) override {
+		buffer.reserve(offset + src.size());
+		buffer.assign(src.dataAs<char>(), src.size());
+
+		return Ok(src.size());
+	}
+
+	Result<void, Error> close(OpenFID, INode) override {
+		return Ok();
+	}
+
+private:
+	std::string buffer;
+};
+
+
+struct SynthFs: public MockFs {
+
+	static uint32 dataType() noexcept {
+		return 91228;
+	}
+
+	SynthFs(const char* str)
+		: MockFs{str}
+	{}
+
+
+	FilePermissions defaultFilePermissions(NodeType) const noexcept {
+		return FilePermissions{0777};
+	}
+
+};
+
+
+// FIXME: Test adding and removing linked direcories does not screews dir listing
 
 
 TEST(TestVfs, testContructor) {
@@ -25,16 +96,15 @@ TEST(TestVfs, testContructor) {
 
     auto root = vfs.nodeById(vfs.rootId());
     ASSERT_TRUE(root.isSome());
-	EXPECT_EQ(INode::Type::Directory, (*root).type());
+	EXPECT_EQ(0, (*root).fsTypeId);
 }
 
-
+/*
 TEST(TestVfs, testMountingRO_FS) {
     auto user = User{0,0};
     auto vfs = Vfs{user, FilePermissions{0666}};
 
-    auto fs = VfsOps {};
-//            .lookup = [](INode const& node, Solace::StringView name) -> Solace::Optional<Entry> {
+//            .lookup = [](INode const& node, StringView name) -> Optional<Entry> {
 //                if (dirId == 0 && name == "file")
 //                    return Optional<Entry>{in_place, "file", VNodeId{dirId.fsId, 1}};
 //                return none;
@@ -63,7 +133,7 @@ TEST(TestVfs, testMountingRO_FS) {
 //            }
 //    };
 
-    auto rego = vfs.registerFileSystem(std::move(fs));
+	auto rego = vfs.registerFileSystem<SynthFs>("Synch");
     ASSERT_TRUE(rego);
     ASSERT_TRUE(vfs.mount(user, vfs.rootId(), *rego));
 
@@ -85,6 +155,7 @@ TEST(TestVfs, testMountingRO_FS) {
 
     EXPECT_EQ(0, count);
 }
+*/
 
 TEST(TestVfs, testLinkingNonExisingNodes) {
     auto user = User{0,0};
@@ -110,9 +181,14 @@ TEST(TestVfs, testLinkingNonExisingNodes) {
 TEST(TestVfs, testLinkingNodes) {
     auto owner = User{0, 0};
     auto vfs = Vfs{owner, FilePermissions{0666}};
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
 
-    auto maybeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0666}, vfs.rootId(), "id");
-    EXPECT_TRUE(maybeId.isOk());
+	auto maybeId = vfs.mknode(vfs.rootId(), "id", *fsId, MockFs::dataType(), owner, FilePermissions{0666});
+	if (!maybeId) {
+		FAIL() << maybeId.getError();
+	}
+	ASSERT_TRUE(maybeId.isOk());
 //    EXPECT_EQ(2, vfs.size());
 
     EXPECT_TRUE(vfs.link(owner, "id2", vfs.rootId(), *maybeId).isOk());
@@ -135,36 +211,38 @@ TEST(TestVfs, testLinkingNodes) {
 TEST(TestVfs, testMakingNodes) {
     auto owner = User{0, 0};
     auto vfs = Vfs{owner, FilePermissions{0666}};
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
 
     // Make a regular data node
 //    EXPECT_EQ(1, vfs.size());
-    auto maybeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "id");
+	auto maybeId = vfs.mknode(vfs.rootId(), "id", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
 	EXPECT_TRUE(maybeId.isOk());
 //    EXPECT_EQ(2, vfs.size());
 //    EXPECT_EQ(1, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a regular data node
-    auto maybeGen = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "generation");
-    EXPECT_TRUE(maybeGen.isOk());
+//    auto maybeGen = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "generation");
+//    EXPECT_TRUE(maybeGen.isOk());
 //    EXPECT_EQ(3, vfs.size());
 //    EXPECT_EQ(2, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a regular Directory node
-    auto maybeDir = vfs.mknode(INode::Type::Directory, owner, FilePermissions{0777}, vfs.rootId(), "dir");
-    EXPECT_TRUE(maybeDir.isOk());
+//    auto maybeDir = vfs.mknode(INode::Type::Directory, owner, FilePermissions{0777}, vfs.rootId(), "dir");
+//    EXPECT_TRUE(maybeDir.isOk());
 //    EXPECT_EQ(4, vfs.size());
 //    EXPECT_EQ(3, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a regular Data node in a directory
-    auto maybeDataInDir = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDir, "data");
-    EXPECT_TRUE(maybeDataInDir.isOk());
+//    auto maybeDataInDir = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDir, "data");
+//    EXPECT_TRUE(maybeDataInDir.isOk());
 //    EXPECT_EQ(5, vfs.size());
 //    EXPECT_EQ(3, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a Synth node in a directory
 //    auto maybeSynthInDir = vfs.mknode(User{0,0}, *maybeDir, "synth", FilePermissions{0777},
-//                                        []() { return Solace::ByteReader{}; },
-//                                        []() { return Solace::ByteWriter{}; });
+//                                        []() { return ByteReader{}; },
+//                                        []() { return ByteWriter{}; });
 //    EXPECT_TRUE(maybeSynthInDir.isOk());
 //    EXPECT_EQ(6, vfs.size());
 
@@ -186,9 +264,11 @@ TEST(TestVfs, testMakingNodes) {
 TEST(TestVfs, testMakingNodeInNonExistingDirFails) {
     auto user = User{0,0};
     auto vfs = Vfs{user, FilePermissions{0666}};
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
 
 //    EXPECT_EQ(1, vfs.size());
-    auto maybeId = vfs.mknode(INode::Type::Data, user, FilePermissions{0777}, 321, "id");
+	auto maybeId = vfs.mknode(321, "id", *fsId, MockFs::dataType(), User{1, 0}, FilePermissions{0777});
     EXPECT_TRUE(maybeId.isError());
 //    EXPECT_EQ(1, vfs.size());
 }
@@ -197,9 +277,10 @@ TEST(TestVfs, testMakingNodeInNonExistingDirFails) {
 TEST(TestVfs, testMakingNodeWithoutDirectoryWritePermissionFails) {
     auto owner = User{0, 0};
     auto vfs = Vfs{owner, FilePermissions{0600}};
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
 
-//    EXPECT_EQ(1, vfs.size());
-    auto maybeId = vfs.mknode(INode::Type::Data, User{1, 0}, FilePermissions{0777}, vfs.rootId(), "id");
+	auto maybeId = vfs.mknode(vfs.rootId(), "id", *fsId, MockFs::dataType(), User{1, 0}, FilePermissions{0777});
     EXPECT_TRUE(maybeId.isError());
 //    EXPECT_EQ(1, vfs.size());
 }
@@ -271,16 +352,23 @@ TEST(TestVfs, testDataNodesRelocatable) {
 TEST(TestVfs, testWalk) {
     auto owner = User{0, 0};
     auto vfs = Vfs{owner, FilePermissions{0600}};
-    auto maybeDirId0 = vfs.mknode(INode::Type::Directory, owner, FilePermissions{0777}, vfs.rootId(), "dir0");
-    auto maybeDirId1 = vfs.mknode(INode::Type::Directory, owner, FilePermissions{0700}, vfs.rootId(), "dir1");
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
+
+
+	auto maybeDirId0 = vfs.createDirectory(vfs.rootId(), "dir0", owner, FilePermissions{0777});
+	auto maybeDirId1 = vfs.createDirectory(vfs.rootId(), "dir1", owner, FilePermissions{0700});
     ASSERT_TRUE(maybeDirId0.isOk());
     ASSERT_TRUE(maybeDirId1.isOk());
 
-    auto maybeDir0Id1 =  vfs.mknode(INode::Type::Directory, owner, FilePermissions{0777}, *maybeDirId0, "dir0");
-    auto maybeData0Id0 = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDirId0, "data0");
-    auto maybeData0Id1 = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDirId0, "data1");
-    auto maybeData1Id0 = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDirId1, "data0");
-    auto maybeData1Id1 = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDirId1, "data1");
+	auto maybeDir0Id1 =  vfs.createDirectory(*maybeDirId0, "dir0", owner, FilePermissions{0777});
+
+	auto maybeNodeId = vfs.mknode(vfs.rootId(), "data", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
+
+	auto maybeData0Id0 = vfs.mknode(*maybeDirId0, "data0", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
+	auto maybeData0Id1 = vfs.mknode(*maybeDirId0, "data1", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
+	auto maybeData1Id0 = vfs.mknode(*maybeDirId1, "data0", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
+	auto maybeData1Id1 = vfs.mknode(*maybeDirId1, "data1", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
 
     ASSERT_TRUE(maybeDir0Id1.isOk());
     ASSERT_TRUE(maybeData0Id0.isOk());
@@ -354,22 +442,26 @@ TEST(TestVfs, testWalk) {
 TEST(TestVfs, testPremissionsInheritence) {
 	auto owner = User{0, 0};
 	auto vfs = Vfs{owner, FilePermissions{0600}};
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
 
-	auto maybeNodeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "data");
+	auto maybeNodeId = vfs.mknode(vfs.rootId(), "data", *fsId, MockFs::dataType(), owner, FilePermissions{0777});
 	auto maybeNode = vfs.nodeById(maybeNodeId);
 	ASSERT_TRUE(maybeNode);
 
 	auto const& node = *maybeNode;
-	EXPECT_TRUE(node.mode().isFile());
-	EXPECT_EQ(0600, node.mode().permissions());
-	EXPECT_EQ(0, node.length());
+	EXPECT_EQ(0600, node.permissions);
+	EXPECT_EQ(0, node.dataSize);
 }
 
 
 TEST(TestVfs, testFileWriteUpdatesSize) {
-    auto owner = User{0, 0};
-    auto vfs = Vfs{owner, FilePermissions{0600}};
-    auto maybeNodeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "data");
+	auto user = User{0, 0};
+	auto vfs = Vfs{user, FilePermissions{0600}};
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
+
+	auto maybeNodeId = vfs.mknode(vfs.rootId(), "str1", *fsId, MockFs::dataType(), user);
     ASSERT_TRUE(maybeNodeId);
 
     {
@@ -377,20 +469,46 @@ TEST(TestVfs, testFileWriteUpdatesSize) {
         ASSERT_TRUE(maybeNode);
 
 		auto const& node = *maybeNode;
-		EXPECT_TRUE(node.mode().isFile());
-		EXPECT_EQ(0600, node.mode().permissions());
-        EXPECT_EQ(0, node.length());
+		EXPECT_EQ(0, node.dataSize);
+		EXPECT_EQ(0600, node.permissions);
     }
 
     char msg[] = "hello";
-    vfs.writer(owner, *maybeNodeId).then([msg](auto&& writer) { writer.write(wrapMemory(msg)); });
 
+	auto maybeFile = vfs.open(user, *maybeNodeId, Permissions::READ);
+	ASSERT_TRUE(maybeFile);
+	ASSERT_TRUE((*maybeFile).write(wrapMemory(msg)));
 
     {
         auto maybeNode = vfs.nodeById(*maybeNodeId);
         ASSERT_TRUE(maybeNode);
 		auto& node = *maybeNode;
-        EXPECT_EQ(5, node.length());
+		EXPECT_EQ(5, node.dataSize);
     }
+}
+
+
+
+TEST(TestVfs, stringFs) {
+	auto user = User{0,0};
+	auto vfs = Vfs{user, FilePermissions{0666}};
+
+	auto fsId = vfs.registerFileSystem<MockFs>("hello");
+	ASSERT_TRUE(fsId);
+
+	auto maybeNodeId = vfs.mknode(vfs.rootId(), "str1", *fsId, MockFs::dataType(), user);
+	ASSERT_TRUE(maybeNodeId);
+
+	char destBuffer[32];
+	auto dest = wrapMemory(destBuffer);
+	dest.fill(0);
+
+	auto maybeFile = vfs.open(user, *maybeNodeId, Permissions::READ);
+	ASSERT_TRUE(maybeFile);
+
+	ASSERT_TRUE((*maybeFile).read(dest));
+
+	destBuffer[31] = 0;
+	EXPECT_STREQ("hello", destBuffer);
 }
 

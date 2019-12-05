@@ -24,30 +24,6 @@ using namespace Solace;
 //    return Ok();
 //}
 
-bool INode::userCan(User user, Permissions op) const noexcept {
-    auto const perms = (owner.uid == user.uid)
-            ? permissions.user()
-            : (owner.gid == user.gid)
-              ? permissions.group()
-              : permissions.others();
-
-    return perms.can(op);
-}
-
-
-uint64 INode::length() const noexcept {
-//    struct SizingVisitor {
-//        uint64 operator() (INode::Data const& d) const noexcept { return d.length; }
-//        uint64 operator() (INode::Dir const&) const noexcept { return 4096; }
-//        uint64 operator() (INode::SynthDir const&) const noexcept { return 4096; }
-//        uint64 operator() (INode::Synth const& /*d*/) const noexcept { return 0; }
-//    };
-
-    // FIXME: Should be dataCount * blockSize;
-    return (_type == Type::Directory)
-            ? 4096
-            : dataCount; //std::visit(SizingVisitor{}, _nodeData);
-}
 
 /*
 void

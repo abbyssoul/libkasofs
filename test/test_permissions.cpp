@@ -79,4 +79,17 @@ TEST(TestVfsPermissions, r_x_r_x_r_x) {
 TEST(TestVfsPermissions, can) {
     EXPECT_TRUE(FilePermissions{0555}.group().can(Permissions::READ | Permissions::EXEC));
     EXPECT_FALSE(FilePermissions{0555}.group().can(Permissions::READ | Permissions::WRITE));
+
+	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0666}, User{2, 3}, Permissions::READ));
+	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0666}, User{2, 3}, Permissions::WRITE));
+	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0666}, User{2, 3}, Permissions::READ | Permissions::WRITE));
+
+	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0600}, User{2, 1}, Permissions::READ));
+	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0600}, User{2, 1}, Permissions::WRITE));
+
+	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 1}, Permissions::READ));
+	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 1}, Permissions::WRITE));
+
+	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 3}, Permissions::READ));
+	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 3}, Permissions::READ));
 }
