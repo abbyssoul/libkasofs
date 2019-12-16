@@ -11,8 +11,8 @@
  *	@file		permissions.hpp
  ******************************************************************************/
 #pragma once
-#ifndef KASOFS_CREDENTIALS_HPP
-#define KASOFS_CREDENTIALS_HPP
+#ifndef KASOFS_PERMISSIONS_HPP
+#define KASOFS_PERMISSIONS_HPP
 
 #include <solace/types.hpp>
 
@@ -157,8 +157,8 @@ struct FileMode {
 		return (mode & IFMT) | perms.value;
 	}
 
-	constexpr bool isDirectory() const noexcept   { return (mode & IFMT) == static_cast<Solace::uint32>(FileTypeMask::Dir); }
-	constexpr bool isFile() const noexcept        { return (mode & IFMT) == static_cast<Solace::uint32>(FileTypeMask::File); }
+	bool isDirectory() const noexcept   { return (mode & IFMT) == static_cast<Solace::uint32>(FileTypeMask::Dir); }
+	bool isFile() const noexcept        { return (mode & IFMT) == static_cast<Solace::uint32>(FileTypeMask::File); }
 
 	constexpr bool operator== (Solace::uint32 rhs) const noexcept {
 		return (mode == rhs);
@@ -189,4 +189,4 @@ bool canUserPerformAction(User owner, FilePermissions acl, User actor, Permissio
 
 
 }  // namespace kasofs
-#endif  // KASOFS_CREDENTIALS_HPP
+#endif  // KASOFS_PERMISSIONS_HPP

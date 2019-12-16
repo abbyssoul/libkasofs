@@ -11,6 +11,9 @@
 #include <solace/posixErrorDomain.hpp>
 
 
+#include <functional>
+
+
 using namespace kasofs;
 using namespace Solace;
 
@@ -28,41 +31,48 @@ Filesystem::~Filesystem() = default;
 
 struct DirFs : public Filesystem {
 
-	Result<INode::VfsData, Error> createNode(NodeType type) override {
+	Result<INode, Error> createNode(NodeType type, User owner, FilePermissions perms) override {
 		if (Vfs::kVfsDirectoryNodeType != type) {
 			return makeError(SystemErrors::MEDIUMTYPE, "DirFs::createNode");
 		}
 
-		auto const dataIndex = adjacencyList.size();
+		INode node{type, owner, perms};
+		node.dataSize = 4096;
+		node.vfsData = adjacencyList.size();
+
 		adjacencyList.emplace_back();
 
-		return Ok(dataIndex);
+		return Ok(std::move(node));
 	}
 
 	FilePermissions defaultFilePermissions(NodeType) const noexcept override {
 		return FilePermissions{0666};
 	}
 
-	auto open(INode, Permissions op) -> Result<OpenFID, Error> override {
+	auto open(INode&, Permissions op) -> Result<OpenFID, Error> override {
 		if (op.can(Permissions::READ) || op.can(Permissions::WRITE))
 			return Ok<OpenFID>(0);
 
 		return makeError(GenericError::PERM, "DirFS::open");
 	}
 
-	auto read(INode, size_type, MutableMemoryView) -> Result<size_type, Error> override {
+	auto read(INode&, size_type, MutableMemoryView) -> Result<size_type, Error> override {
 		return makeError(GenericError::ISDIR, "DirFs::write");
 	}
 
-	auto write(INode, size_type, MemoryView) -> Result<size_type, Error> override {
+	auto write(INode&, size_type, MemoryView) -> Result<size_type, Error> override {
 		return makeError(GenericError::ISDIR, "DirFs::write");
 	}
 
-	auto close(OpenFID, INode) -> Result<void, Error> override {
+	auto close(INode&, OpenFID) -> Result<void, Error> override {
 		return Ok();
 	}
 
-	Result<void, Error> addEntry(INode::VfsData id, Entry entry) {
+	Result<void, Error> addEntry(INode const& dirNode, Entry entry) {
+		if (dirNode.nodeTypeId != Vfs::kVfsDirectoryNodeType)
+			return makeError(GenericError::NOTDIR , "DirFs::addEntry");
+
+		auto const id = dirNode.vfsData;
 		if (id >= adjacencyList.size())
 			return makeError(GenericError::NOENT, "DirFs::addEntry");
 
@@ -71,18 +81,35 @@ struct DirFs : public Filesystem {
 	}
 
 
-	Result<void, Error> removeEntry(INode::VfsData id, StringView name) {
+	Result<Optional<INode::Id>, Error> removeEntry(INode& dirNode, StringView name) {
+		if (dirNode.nodeTypeId != Vfs::kVfsDirectoryNodeType)
+			return makeError(GenericError::NOTDIR , "DirFs::removeEntry");
+
+		auto const id = dirNode.vfsData;
 		if (id >= adjacencyList.size())
 			return makeError(GenericError::NOENT, "DirFs::removeEntry");
 
 		auto& e = adjacencyList[id];
-		e.erase(std::remove_if(e.begin(), e.end(), [name](Entry const& entry) { return (name == entry.name); }),
-								  e.end());
+		Optional<INode::Id> removedId;
+		e.erase(std::remove_if(e.begin(), e.end(),
+							   [name, &removedId](Entry const& entry) {
+					if (name == entry.name) {
+						removedId = entry.nodeId;
+						return true;
+					}
+					return false;
+				}),
+				e.end());
 
-		return Ok();
+		return removedId;
 	}
 
-	Optional<Entry> lookup(INode::VfsData id, StringView name) const {
+
+	Optional<Entry> lookup(INode const& dirNode, StringView name) const {
+		if (dirNode.nodeTypeId != Vfs::kVfsDirectoryNodeType)
+			return none;
+
+		auto const id = dirNode.vfsData;
 		if (id >= adjacencyList.size())
 			return none;
 
@@ -95,10 +122,15 @@ struct DirFs : public Filesystem {
 	}
 
 
-	EntriesIterator enumerateEntries(INode::VfsData id) const {
+	EntriesIterator enumerateEntries(INode const& dirNode) const {
+		if (dirNode.nodeTypeId != Vfs::kVfsDirectoryNodeType)
+			return {nullptr, nullptr};
+
+		auto const id = dirNode.vfsData;
 		if (id >= adjacencyList.size())
 			return {nullptr, nullptr};
 
+		// FIXME: It is possbile to unlink a dirctory while it is enumerated and get UB!
 		auto& entries = adjacencyList[id];
 		return {entries.data(), entries.data() + entries.size()};
 	}
@@ -112,29 +144,15 @@ private:
 
 
 Vfs::Vfs(User owner, FilePermissions rootPerms)
-	: _index{{INode{0, kVfsTypeDirectory, kVfsDirectoryNodeType, 0, owner, rootPerms}}}
+	: _index{}
 	, _vfs{}
 {
 	_vfs.emplace(kVfsTypeDirectory, std::make_unique<DirFs>());
 	_nextId = 1;
 
-	auto& root = _index[0];  // Adjust root node to point to first data block
-	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	root.vfsData = dirFs->createNode(kVfsTypeDirectory).unwrap();
+	createUnlinkedNode(kVfsTypeDirectory, kVfsDirectoryNodeType, owner, rootPerms, FilePermissions{0666});
 }
 
-
-//INode const& Vfs::root() const { return inodes.at(0); }
-//INode& Vfs::root() { return inodes.at(0); }
-
-
-//Result<VfsId, Error>
-//Vfs::registerFileSystem(VfsOps&& fs) {
-//    auto const fsId = vfs.size();
-//    vfs.emplace_back(std::move(fs));
-
-//	return Ok(static_cast<VfsId>(fsId));
-//}
 
 Result<void, Error>
 Vfs::unregisterFileSystem(VfsId fsId) {
@@ -219,39 +237,62 @@ Vfs::link(User user, StringView linkName, INode::Id from, INode::Id to) {
 		return makeError(GenericError::PERM, "link");
     }
 
-    if (nodeById(to).isNone()) {
+	auto maybeTargetNode = nodeById(to);
+	if (!maybeTargetNode) {
 		return makeError(GenericError::NOENT, "link:to");
     }
 
     // Add new entry:
-    // TODO: Check dataIndex exist?
 	Entry entry{linkName, to};
 	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	return dirFs->addEntry(dirNode.vfsData, entry);
-//	adjacencyList[dirNode.dataIndex].emplace_back(linkName, to);
+	auto result = dirFs->addEntry(dirNode, entry);
+	if (result) {  // TODO(abbyssoul): this is a race condition as node could have been changed
+		_index[to].nLinks += 1;  // (*maybeTargetNode).nLinks += 1;
+	}
+
+	return result;
 }
 
 
 Result<void, Error>
-Vfs::unlink(User user, StringView name, INode::Id from) {
-    auto maybeNode = nodeById(from);
-    if (!maybeNode) {
+Vfs::unlink(User user, StringView name, INode::Id fromDir) {
+	auto maybeDirNode = nodeById(fromDir);
+	if (!maybeDirNode) {
 		return makeError(GenericError::BADF, "unlink");
     }
 
-	auto& node = *maybeNode;
-	if (!isDir(node)) {
+	auto& dirNode = *maybeDirNode;
+	if (!isDir(dirNode)) {
 		return makeError(GenericError::NOTDIR, "unlink");
     }
 
-    if (!node.userCan(user, Permissions::WRITE)) {
+	if (!dirNode.userCan(user, Permissions::WRITE)) {
 		return makeError(GenericError::PERM, "unlink");
     }
 
-	// lookup named entry:
 	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	return dirFs->removeEntry(node.vfsData, name);
+	auto maybeUnlinked = dirFs->removeEntry(dirNode, name);
+	if (!maybeUnlinked) {
+		return maybeUnlinked.moveError();
+	}
+
+	auto const& maybeNodeId = *maybeUnlinked;
+	if (!maybeNodeId)
+		return Ok();
+
+	auto maybeRemovedNode = nodeById(*maybeNodeId);
+	if (!maybeRemovedNode)
+		return Ok();
+
+	auto node = *maybeRemovedNode;
+	node.nLinks -= 1;
+	if (!node.nLinks) {
+		_index.erase(_index.begin() + *maybeNodeId);
+	}
+
+	return Ok();
 }
+
 
 Optional<Entry>
 Vfs::lookup(INode::Id dirNodeId, StringView name) const {
@@ -266,7 +307,7 @@ Vfs::lookup(INode::Id dirNodeId, StringView name) const {
     }
 
 	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	return dirFs->lookup(dirNode.vfsData, name);
+	return dirFs->lookup(dirNode, name);
 }
 
 
@@ -278,6 +319,16 @@ Vfs::nodeById(INode::Id id) const noexcept {
 
 	return _index.at(id);
 }
+
+
+void Vfs::updateNode(INode::Id id, INode inode) {
+	if (id >= _index.size()) {
+		return;
+	}
+
+	_index[id].swap(inode);
+}
+
 
 Result<File, Error>
 Vfs::open(User user, INode::Id fid, Permissions op) {
@@ -302,35 +353,7 @@ Vfs::open(User user, INode::Id fid, Permissions op) {
 		return maybeOpenedFiledId.moveError();
 	}
 
-	return File{this, vnode, *maybeOpenedFiledId};
-}
-
-
-File::~File() {
-	auto maybeFs = vfs->findFs(inode.fsTypeId);
-	if (maybeFs) {
-		(*maybeFs)->close(fid, inode);
-	}
-}
-
-Result<File::size_type, Error>
-File::read(MutableMemoryView dest) {
-	auto maybeFs = vfs->findFs(inode.fsTypeId);
-	if (!maybeFs) {
-		return makeError(GenericError::NXIO, "read");
-	}
-
-	return (*maybeFs)->read(inode, readOffset, dest);
-}
-
-Result<File::size_type, Error>
-File::write(MemoryView src) {
-	auto maybeFs = vfs->findFs(inode.fsTypeId);
-	if (!maybeFs) {
-		return makeError(GenericError::NXIO, "write");
-	}
-
-	return (*maybeFs)->write(inode, writeOffset, src);
+	return File{this, fid, vnode, *maybeOpenedFiledId};
 }
 
 
@@ -353,57 +376,8 @@ Vfs::enumerateDirectory(INode::Id dirNodeId, User user) const {
 
 	// lookup named entry:
 	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	return dirFs->enumerateEntries(dirNode.vfsData);
+	return dirFs->enumerateEntries(dirNode);
 }
-
-/*
-Result<ByteReader, Error>
-Vfs::reader(User user, INode::Id nodeId) {
-    auto maybeNode = nodeById(nodeId);
-    if (!maybeNode) {
-		return makeError(GenericError::BADF, "reader");
-    }
-
-	auto& node = *maybeNode;
-    if (node.type() != INode::Type::Data) {
-		return makeError(GenericError::ISDIR, "reader");
-    }
-
-    if (!node.userCan(user, Permissions::READ)) {
-		return makeError(GenericError::PERM, "reader");
-    }
-
-    auto& fs = vfs[node.deviceId];
-    if (!fs.read)
-		return makeError(GenericError::IO, "reader");
-
-    return Ok(fs.read(node));
-}
-
-
-Result<ByteWriter, Error>
-Vfs::writer(User user, INode::Id nodeId) {
-    auto maybeNode = nodeById(nodeId);
-    if (!maybeNode) {
-		return makeError(GenericError::BADF, "writer");
-    }
-
-	auto& node = *maybeNode;
-    if (node.type() != INode::Type::Data) {
-		return makeError(GenericError::ISDIR, "writer");
-    }
-
-	if (!node.userCan(user, Permissions::WRITE)) {
-		return makeError(GenericError::PERM, "writer");
-    }
-
-    auto& fs = vfs[node.deviceId];
-    if (!fs.write)
-		return makeError(GenericError::IO, "writer");
-
-    return Ok(fs.write(node));
-}
-*/
 
 
 Optional<Filesystem*>
@@ -423,12 +397,7 @@ Vfs::createDirectory(INode::Id where, StringView name, User user, FilePermission
 
 
 Result<INode::Id, Error>
-Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, User owner, FilePermissions requredPerms) {
-	auto maybeVfs = findFs(type);
-	if (!maybeVfs) {  // Unsupported VFS specified
-		return makeError(SystemErrors::PROTONOSUPPORT, "mknode");
-	}
-
+Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms) {
 	auto const maybeRoot = nodeById(where);
 	if (!maybeRoot) {
 		return makeError(GenericError::NOENT , "mkNode");
@@ -443,24 +412,43 @@ Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, 
 		return makeError(GenericError::PERM, "mkNode");
 	}
 
-	auto& vfs = *maybeVfs;
-	auto maybeData = vfs->createNode(nodeType);  // NOTE: will leak in case emplace_back throws
-	if (!maybeData) {
-		return maybeData.moveError();
+	auto maybeNewNodeID = createUnlinkedNode(type, nodeType, owner, perms, dir.permissions);
+	if (!maybeNewNodeID) {  // FIXME: new node leakage in case of linking error
+		return maybeNewNodeID.moveError();
 	}
-
-	uint32 const dirPerms = dir.permissions.value;
-	uint32 const permBase = vfs->defaultFilePermissions(nodeType).value;
-	auto const effectivePermissions = FilePermissions{requredPerms.value & (~permBase | (dirPerms & permBase))};
-	auto const newNodeIndex = INode::Id(_index.size());
-	_index.emplace_back(newNodeIndex, type, nodeType, *maybeData, owner, effectivePermissions);
 
 	// Link
-	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	auto maybeLinked = dirFs->addEntry(dir.vfsData, Entry{name, newNodeIndex});
-	if (!maybeLinked) {
-		return maybeLinked.moveError();
+	auto linkResult = link(owner, name, where, *maybeNewNodeID);
+	if (!linkResult) {  // FIXME: failed to link a new node - node must be removed.
+		return linkResult.moveError();
 	}
 
-    return Ok(newNodeIndex);
+	return maybeNewNodeID;
+}
+
+
+Result<INode::Id, Error>
+Vfs::createUnlinkedNode(VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms, FilePermissions baseP) {
+	auto maybeVfs = findFs(type);
+	if (!maybeVfs) {  // Unsupported VFS specified
+		return makeError(SystemErrors::PROTONOSUPPORT, "mknode");
+	}
+
+	auto& vfs = *maybeVfs;
+	uint32 const dirPerms = baseP.value;
+	uint32 const permBase = vfs->defaultFilePermissions(nodeType).value;
+	auto const effectivePermissions = FilePermissions{perms.value & (~permBase | (dirPerms & permBase))};
+
+	auto maybeNewNode = vfs->createNode(nodeType, owner, effectivePermissions);
+	if (!maybeNewNode) {  // FIXME: will leak in case emplace_back throws
+		return maybeNewNode.moveError();
+	}
+
+	auto& newNode = *maybeNewNode;
+	newNode.fsTypeId = type;
+
+	auto const newNodeIndex = INode::Id(_index.size());
+	_index.emplace_back(std::move(newNode));
+
+	return Ok(newNodeIndex);
 }

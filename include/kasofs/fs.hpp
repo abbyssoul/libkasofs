@@ -14,8 +14,8 @@
 #ifndef KASOFS_FS_HPP
 #define KASOFS_FS_HPP
 
-
 #include "vinode.hpp"
+
 #include <solace/result.hpp>
 #include <solace/error.hpp>
 #include <solace/mutableMemoryView.hpp>
@@ -23,7 +23,7 @@
 
 namespace kasofs {
 
-// Alias for error type used throughout the library
+// Alias for the error type used throughout the library
 using Error = Solace::Error;
 
 
@@ -38,18 +38,20 @@ struct Filesystem {
 
 	virtual ~Filesystem();
 
-	virtual Solace::Result<INode::VfsData, Error> createNode(NodeType type) = 0;
+	virtual Solace::Result<INode, Error> createNode(NodeType type, User owner, FilePermissions perms) = 0;
 
 	virtual FilePermissions defaultFilePermissions(NodeType type) const noexcept = 0;
 
-	virtual auto open(INode node, Permissions op) -> Solace::Result<OpenFID, Error> = 0;
+	virtual auto open(INode& node, Permissions op) -> Solace::Result<OpenFID, Error> = 0;
 
-	virtual auto read(INode node, size_type offset, Solace::MutableMemoryView dest) -> Solace::Result<size_type, Error> = 0;
+	virtual auto read(INode& node, size_type offset, Solace::MutableMemoryView dest) ->
+	Solace::Result<size_type, Error> = 0;
 
-	virtual auto write(INode node, size_type offset, Solace::MemoryView src) -> Solace::Result<size_type, Error> = 0;
+	virtual auto write(INode& node, size_type offset, Solace::MemoryView src) -> Solace::Result<size_type, Error> = 0;
 
-	virtual auto close(OpenFID fid, INode node) -> Solace::Result<void, Error> = 0;
+	virtual auto close(INode& node, OpenFID fid) -> Solace::Result<void, Error> = 0;
 };
+
 
 
 struct File {
@@ -57,10 +59,11 @@ struct File {
 
 	~File();
 
-	constexpr File(struct Vfs const* fs, INode node, Filesystem::OpenFID openId) noexcept
-		: vfs{fs}
-		, inode{node}
-		, fid{openId}
+	constexpr File(struct Vfs* fs, INode::Id nodeId, INode node, Filesystem::OpenFID openId) noexcept
+		: _vfs{fs}
+		, _nodeId{nodeId}
+		, _fid{openId}
+		, _inode{node}
 	{}
 
 	Solace::Result<size_type, Error>
@@ -69,13 +72,16 @@ struct File {
 	Solace::Result<size_type, Error>
 	write(Solace::MemoryView src);
 
-private:
-	struct Vfs const*			vfs;
-	INode const					inode;
-	Filesystem::OpenFID const	fid;
+	auto size() const noexcept { return _inode.dataSize; }
 
-	size_type					readOffset{0};
-	size_type					writeOffset{0};
+private:
+	struct Vfs* const			_vfs;
+	INode::Id const				_nodeId;
+	Filesystem::OpenFID const	_fid;
+	INode						_inode;
+
+	size_type					_readOffset{0};
+	size_type					_writeOffset{0};
 };
 
 

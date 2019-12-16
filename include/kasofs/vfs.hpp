@@ -24,7 +24,7 @@
 #include <solace/path.hpp>
 
 #include <vector>
-#include <functional>   // FIXME: Review - is it the best implementation?
+#include <unordered_map>
 
 
 namespace kasofs {
@@ -128,7 +128,36 @@ public:
     Vfs(Vfs&&) = default;
     Vfs& operator= (Vfs&&) noexcept = default;
 
+	/////////////////////////////////////////////////////////////
+	/// Index management
+	/////////////////////////////////////////////////////////////
+
 	INode::Id rootId() const noexcept { return 0; }
+
+	/**
+	 * Get number of nodes in this VFS
+	 * @return Number of nodes in the index
+	 */
+	size_type size() const noexcept {
+		return _index.size();
+	}
+
+
+	/**
+	 * Find an inode by node Id. Equivalent to FS stat call
+	 * @param id inode number.
+	 * @return Optional INode if given inode was found, none otherwise.
+	 */
+	auto nodeById(INode::Id id) const noexcept -> Solace::Optional<INode>;
+
+	auto nodeById(Solace::Result<INode::Id, Error> const& maybeId) const noexcept {
+		return maybeId
+				? nodeById(*maybeId)
+				: Solace::none;
+	}
+
+	void updateNode(INode::Id id, INode inode);
+
 
     /////////////////////////////////////////////////////////////
     /// VFS management
@@ -140,7 +169,7 @@ public:
 	 */
 	template<class Type, typename...Args>
 	Solace::Result<VfsId, Error>
-	registerFileSystem(Args&& ...args) {
+	registerFilesystem(Args&& ...args) {
 		auto fs = std::make_unique<Type>(std::forward<Args>(args)...);
 
 		const auto regId = _nextId;
@@ -151,13 +180,10 @@ public:
 	}
 
 	/**
-	 * Register a new type of FS
+	 * Find previously registered FS driver
 	 * @param vfs New virtual file system operations.
 	 * @return Id of the registered vfs or an error.
 	 */
-//	Solace::Result<VfsId, Error>
-//    registerFileSystem(VfsOps&& vfs);
-
 	Solace::Optional<Filesystem*>
 	findFs(VfsId id) const;
 
@@ -176,8 +202,8 @@ public:
 	 * @param fsId Id of the previously registered vfs.
 	 * @return Void or an error.
 	 */
-//	Solace::Result<void, Error>
-//	mount(User user, INode::Id mountingPoint, VfsId fsId);
+// Solace::Result<void, Error>
+// mount(User user, INode::Id mountingPoint, VfsId fsId);
 
 	/**
 	 * Unmount vfs from the given mounting point.
@@ -185,8 +211,8 @@ public:
 	 * @param mountingPoint INode to unmount vfs from.
 	 * @return Void or an error.
 	 */
-//	Solace::Result<void, Error>
-//	umount(User user, INode::Id mountingPoint);
+// Solace::Result<void, Error>
+// umount(User user, INode::Id mountingPoint);
 
     /////////////////////////////////////////////////////////////
     /// Graph node linking
@@ -217,19 +243,6 @@ public:
      */
 	Solace::Result<void, Error>
 	unlink(User user, Solace::StringView name, INode::Id from);
-
-    /**
-     * Find an inode by node Id. Equivalent to FS stat call
-     * @param id inode number.
-     * @return Optional INode if given inode was found, none otherwise.
-     */
-	auto nodeById(INode::Id id) const noexcept -> Solace::Optional<INode>;
-
-	auto nodeById(Solace::Result<INode::Id, Error> const& maybeId) const noexcept {
-		return maybeId
-				? nodeById(*maybeId)
-				: Solace::none;
-	}
 
 
     template<typename F>
@@ -284,7 +297,12 @@ public:
 	 * @return Index of the new node on success or an error.
 	 */
 	Solace::Result<INode::Id, Error>
-	mknode(INode::Id where, Solace::StringView name, VfsId fsType, VfsNodeType nodeType, User user, FilePermissions perms = {0777});
+	mknode(INode::Id where,
+		   Solace::StringView name,
+		   VfsId fsType,
+		   VfsNodeType nodeType,
+		   User user,
+		   FilePermissions perms = {0777});
 
 	/**
 	 * Create a directory node
@@ -313,7 +331,7 @@ public:
 
 protected:
 
-    /**
+	/**
      * @brief Find directory entry in the given inode.
      * @param dirNodeId Id of the Node to search link from.
      * @param name Name of the link to find.
@@ -326,6 +344,10 @@ protected:
 	findFsOf(INode const& vnode) const {
 		return findFs(vnode.fsTypeId);
 	}
+
+	/// Create unlinked node
+	Solace::Result<INode::Id, Error>
+	createUnlinkedNode(VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms, FilePermissions dirPerms);
 
 private:
 

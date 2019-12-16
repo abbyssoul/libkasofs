@@ -14,7 +14,7 @@
 #ifndef KASOFS_VINODE_HPP
 #define KASOFS_VINODE_HPP
 
-#include "credentials.hpp"
+#include "permissions.hpp"
 
 
 namespace kasofs {
@@ -31,8 +31,6 @@ struct INode {
 	using VfsData = Solace::uint64;
 	using size_type = Solace::uint64;
 
-	Id					nodeId;			//!< Id of the node used vfs owning it.
-
 	VfsId				fsTypeId;			//!< Id of the vfs type of the node
 	VfsNodeType			nodeTypeId;			//!< FS specific type of the node
 
@@ -44,25 +42,24 @@ struct INode {
     Solace::uint32      mtime{0};           //!< last write time
 
 	Solace::uint32      version{0};         //!< Version of the node
-	VfsData				vfsData;         //!< Data storage used by vfs.
-	size_type			dataSize{0};         //!< Size of the data stored by vfs
+	Solace::uint32      nLinks{0};			//!< Number of links to this node from other nodes / direcotries
+	VfsData				vfsData{0};			//!< Data storage used by vfs.
+	size_type			dataSize{0};		//!< Size of the data stored by vfs
 
 public:
 
-	constexpr INode(Id id, VfsId major, VfsNodeType minor, VfsData data, User user, FilePermissions perms) noexcept
-		: nodeId{id}
-		, fsTypeId{major}
+	constexpr INode(VfsNodeType minor, User user, FilePermissions perms) noexcept
+		: fsTypeId{0}
 		, nodeTypeId{minor}
-		, owner{user}
-        , permissions{perms}
-		, vfsData{data}
-    {
-    }
+		, owner{std::move(user)}
+		, permissions{std::move(perms)}
+	{
+	}
+
 
 	INode& swap(INode& rhs) noexcept {
 		using std::swap;
 
-		swap(nodeId, rhs.nodeId);
 		swap(fsTypeId, rhs.fsTypeId);
 		swap(nodeTypeId, rhs.nodeTypeId);
 
@@ -85,17 +82,11 @@ public:
 		return canUserPerformAction(owner, permissions, user, action);
 	}
 
-	/// Get type of the node
-//    FileMode mode() const noexcept {
-//        return (_type == Type::Directory)
-//				? FileMode{FileTypeMask::Dir, permissions}
-//				: FileMode{FileTypeMask::File, permissions};
-//    }
-
 };
 
 
-inline void swap(INode& lhs, INode& rhs) noexcept {
+inline
+void swap(INode& lhs, INode& rhs) noexcept {
 	lhs.swap(rhs);
 }
 

@@ -11,7 +11,7 @@
  *	@file test/test_permissions.cpp
  *	@brief		Test suit for KasoFS::Credentials
  ******************************************************************************/
-#include "kasofs/credentials.hpp"    // Class being tested.
+#include "kasofs/permissions.hpp"    // Class being tested.
 
 #include <gtest/gtest.h>
 
@@ -22,7 +22,7 @@ using namespace Solace;
 
 TEST(TestVfsFileMode, modeEquality) {
 	// -rwx------ / 0700
-	EXPECT_TRUE(0700 == FileMode{0700});
+	EXPECT_EQ(0700, FileMode{0700});
 
 	EXPECT_TRUE(FileMode(FileTypeMask::Dir, 0700).isDirectory());
 	EXPECT_TRUE(FileMode(FileTypeMask::File, 0700).isFile());
@@ -80,16 +80,17 @@ TEST(TestVfsPermissions, can) {
     EXPECT_TRUE(FilePermissions{0555}.group().can(Permissions::READ | Permissions::EXEC));
     EXPECT_FALSE(FilePermissions{0555}.group().can(Permissions::READ | Permissions::WRITE));
 
-	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0666}, User{2, 3}, Permissions::READ));
-	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0666}, User{2, 3}, Permissions::WRITE));
-	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0666}, User{2, 3}, Permissions::READ | Permissions::WRITE));
+	EXPECT_TRUE(canUserPerformAction(User{0, 1}, FilePermissions{0666}, User{2, 3}, Permissions::READ));
+	EXPECT_TRUE(canUserPerformAction(User{0, 1}, FilePermissions{0666}, User{2, 3}, Permissions::WRITE));
+	EXPECT_TRUE(canUserPerformAction(User{0, 1}, FilePermissions{0666}, User{2, 3},
+									 Permissions::READ | Permissions::WRITE));
 
-	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0600}, User{2, 1}, Permissions::READ));
-	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0600}, User{2, 1}, Permissions::WRITE));
+	EXPECT_FALSE(canUserPerformAction(User{0, 1}, FilePermissions{0600}, User{2, 1}, Permissions::READ));
+	EXPECT_FALSE(canUserPerformAction(User{0, 1}, FilePermissions{0600}, User{2, 1}, Permissions::WRITE));
 
-	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 1}, Permissions::READ));
-	EXPECT_TRUE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 1}, Permissions::WRITE));
+	EXPECT_TRUE(canUserPerformAction(User{0, 1}, FilePermissions{0660}, User{2, 1}, Permissions::READ));
+	EXPECT_TRUE(canUserPerformAction(User{0, 1}, FilePermissions{0660}, User{2, 1}, Permissions::WRITE));
 
-	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 3}, Permissions::READ));
-	EXPECT_FALSE(canUserPerformAction(User{0,1}, FilePermissions{0660}, User{2, 3}, Permissions::READ));
+	EXPECT_FALSE(canUserPerformAction(User{0, 1}, FilePermissions{0660}, User{2, 3}, Permissions::READ));
+	EXPECT_FALSE(canUserPerformAction(User{0, 1}, FilePermissions{0660}, User{2, 3}, Permissions::READ));
 }
