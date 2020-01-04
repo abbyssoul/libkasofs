@@ -363,5 +363,11 @@ private:
 };
 
 
+constexpr
+bool isDirectory(INode const& vnode) noexcept {
+	return (vnode.fsTypeId == Vfs::kVfsTypeDirectory && vnode.nodeTypeId == Vfs::kVfsDirectoryNodeType);
+}
+
+
 }  // namespace kasofs
 #endif  // KASOFS_VFS_HPP

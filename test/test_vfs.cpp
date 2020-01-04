@@ -29,6 +29,10 @@ struct MockFs: public Filesystem {
 		: buffer{str}
 	{}
 
+	FilePermissions defaultFilePermissions(NodeType) const noexcept override {
+		return FilePermissions{0777};
+	}
+
 	Result<INode, Error> createNode(NodeType type, User owner, FilePermissions perms) override {
 		INode node{type, owner, perms};
 		node.dataSize = buffer.size();
@@ -36,9 +40,10 @@ struct MockFs: public Filesystem {
 		return Ok(std::move(node));
 	}
 
-	FilePermissions defaultFilePermissions(NodeType) const noexcept override {
-		return FilePermissions{0777};
+	Result<void, Error> destroyNode(INode&) override {
+		return Ok();
 	}
+
 
 	auto open(INode&, Permissions) -> Result<OpenFID, Error> override {
 		return Ok<OpenFID>(0);
@@ -58,8 +63,18 @@ struct MockFs: public Filesystem {
 	}
 
 	Result<size_type, Error> write(INode& node, size_type offset, MemoryView src) override {
-		buffer.reserve(offset + src.size());
-		buffer.assign(src.dataAs<char>(), src.size());
+		auto const newSize = offset + src.size();
+		buffer.reserve(newSize);
+		if (buffer.size() < newSize) {
+			buffer.resize(newSize);
+		}
+
+		auto writeResult = wrapMemory(buffer.data(), buffer.size())
+				.write(src, offset);
+
+		if (!writeResult)
+			return writeResult.moveError();
+
 		node.dataSize = buffer.length();
 
 		return Ok(src.size());
@@ -310,6 +325,29 @@ TEST_F(MockFsTest, unlinkingOpenFileRemovesNodeFromIndex) {
 }
 
 
+TEST_F(MockFsTest, linkingOwnsName) {
+	char linkName[16];
+	strcpy(linkName, "name1");
+
+	auto maybeId = vfs.mknode(vfs.rootId(), linkName, fsId, MockFs::dataType(), owner);
+	ASSERT_TRUE(maybeId.isOk());
+
+	strcpy(linkName, "eman3");
+
+	EXPECT_EQ(2, vfs.size());
+
+	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
+	ASSERT_TRUE(enumerator.isOk());
+	uint32 count = 0;
+	for (auto const& e : *enumerator) {
+		EXPECT_EQ(*maybeId, e.nodeId);
+		EXPECT_EQ("name1", e.name);
+		count += 1;
+	}
+	EXPECT_EQ(1, count);
+}
+
+
 TEST_F(MockFsTest, makingMockNodes) {
     // Make a regular data node
 	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
@@ -497,6 +535,7 @@ TEST_F(MockFsTest, testFileWriteUpdatesSize) {
 	auto maybeNodeId = vfs.mknode(vfs.rootId(), "str1", fsId, MockFs::dataType(), owner);
     ASSERT_TRUE(maybeNodeId);
 
+	auto const nodeId = *maybeNodeId;
     {
 		auto maybeNode = vfs.nodeById(maybeNodeId);
         ASSERT_TRUE(maybeNode);
@@ -506,18 +545,30 @@ TEST_F(MockFsTest, testFileWriteUpdatesSize) {
 		EXPECT_EQ(0600, node.permissions);
     }
 
-	auto maybeFile = vfs.open(owner, *maybeNodeId, Permissions::READ);
-	ASSERT_TRUE(maybeFile);
-
 	char msg[] = "other-message";
 	auto buf = wrapMemory(msg);
-	ASSERT_TRUE((*maybeFile).write(buf));
+	{
+		auto maybeFile = vfs.open(owner, nodeId, Permissions::READ);
+		ASSERT_TRUE(maybeFile.isOk());
+		ASSERT_TRUE((*maybeFile).write(buf).isOk());
+
+		// Note: file is closed after this point
+	}
 
     {
-        auto maybeNode = vfs.nodeById(*maybeNodeId);
+		auto maybeNode = vfs.nodeById(nodeId);
         ASSERT_TRUE(maybeNode);
 		auto& node = *maybeNode;
 		EXPECT_EQ(buf.size(), node.dataSize);
+
+		auto maybeReadFile = vfs.open(owner, nodeId, Permissions::READ);
+		ASSERT_TRUE(maybeReadFile.isOk());
+
+		char readBuf[32];
+		auto wrappedReadBuf = wrapMemory(readBuf);
+		wrappedReadBuf.fill(0);
+		ASSERT_TRUE((*maybeReadFile).read(wrappedReadBuf).isOk());
+		EXPECT_STREQ(msg, readBuf);
     }
 
 	// TODO(abbyssoul): Write few more bytes to test writeOffset works

@@ -5,7 +5,6 @@ set(PROJECT_DESCRIPTION "Virtual File system in modern C++")
 
 # Custom build target to generate code coverage:
 # Don't want this to run on every build.
-option(KASOFS_GTEST_SUPPORT "Build without GTEST" ON)
 option(COVERALLS "Generate coveralls data" OFF)
 option(SANITIZE "Enable 'sanitize' compiler flag" OFF)
 
@@ -21,9 +20,6 @@ configure_file(lib${PROJECT_NAME}.pc.in lib${PROJECT_NAME}.pc @ONLY)
 # ---------------------------------
 # Build project dependencies
 # ---------------------------------
-set(KASOFS_EXTERNAL_DEP_GTEST_DIR "external/gtest/googletest"
-    CACHE PATH "The path to the Google Test framework.")
-
 include_directories(include)
 
 add_subdirectory(src)

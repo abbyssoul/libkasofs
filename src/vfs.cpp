@@ -38,12 +38,17 @@ struct DirFs : public Filesystem {
 
 		INode node{type, owner, perms};
 		node.dataSize = 4096;
-		node.vfsData = adjacencyList.size();
-
-		adjacencyList.emplace_back();
+		node.vfsData = nextId();
+		_adjacencyList.emplace(node.vfsData, std::vector<Entry>{});
 
 		return Ok(std::move(node));
 	}
+
+	Result<void, Error> destroyNode(INode& node) override {
+		_adjacencyList.erase(node.vfsData);
+		return Ok();
+	}
+
 
 	FilePermissions defaultFilePermissions(NodeType) const noexcept override {
 		return FilePermissions{0666};
@@ -73,10 +78,11 @@ struct DirFs : public Filesystem {
 			return makeError(GenericError::NOTDIR , "DirFs::addEntry");
 
 		auto const id = dirNode.vfsData;
-		if (id >= adjacencyList.size())
+		auto it = _adjacencyList.find(id);
+		if (it == _adjacencyList.end())
 			return makeError(GenericError::NOENT, "DirFs::addEntry");
 
-		adjacencyList[id].emplace_back(std::move(entry));
+		it->second.emplace_back(std::move(entry));
 		return Ok();
 	}
 
@@ -86,10 +92,11 @@ struct DirFs : public Filesystem {
 			return makeError(GenericError::NOTDIR , "DirFs::removeEntry");
 
 		auto const id = dirNode.vfsData;
-		if (id >= adjacencyList.size())
+		auto it = _adjacencyList.find(id);
+		if (it == _adjacencyList.end())
 			return makeError(GenericError::NOENT, "DirFs::removeEntry");
 
-		auto& e = adjacencyList[id];
+		auto& e = _adjacencyList[id];
 		Optional<INode::Id> removedId;
 		e.erase(std::remove_if(e.begin(), e.end(),
 							   [name, &removedId](Entry const& entry) {
@@ -110,15 +117,16 @@ struct DirFs : public Filesystem {
 			return none;
 
 		auto const id = dirNode.vfsData;
-		if (id >= adjacencyList.size())
+		auto it = _adjacencyList.find(id);
+		if (it == _adjacencyList.end())
 			return none;
 
-		auto const& enties = adjacencyList[id];
-		auto it = std::find_if(enties.begin(), enties.end(), [name](Entry const& e) { return e.name == name; });
+		auto const& enties = it->second;
+		auto maybeEntry = std::find_if(enties.begin(), enties.end(), [name](Entry const& e) { return e.name == name; });
 
-		return (it == enties.end())
+		return (maybeEntry == enties.end())
 				? none
-				: Optional{*it};
+				: Optional{*maybeEntry};
 	}
 
 
@@ -127,18 +135,23 @@ struct DirFs : public Filesystem {
 			return {nullptr, nullptr};
 
 		auto const id = dirNode.vfsData;
-		if (id >= adjacencyList.size())
+		auto it = _adjacencyList.find(id);
+		if (it == _adjacencyList.end())
 			return {nullptr, nullptr};
 
 		// FIXME: It is possbile to unlink a dirctory while it is enumerated and get UB!
-		auto& entries = adjacencyList[id];
+		auto& entries = it->second;
 		return {entries.data(), entries.data() + entries.size()};
 	}
 
 private:
-	/// Directory entries - Named Graph edges
-	std::vector<std::vector<Entry>> adjacencyList;
+	using DataId = INode::VfsData;
+	DataId nextId() noexcept { return _idBase++; }
 
+	DataId _idBase{0};
+
+	/// Directory entries - Named Graph edges
+	std::unordered_map<DataId, std::vector<Entry>> _adjacencyList;
 };
 
 
@@ -211,11 +224,6 @@ Vfs::umount(User user, INode::Id mountingPoint) {
 */
 
 
-constexpr
-bool isDir(INode const& vnode) noexcept {
-	return (vnode.fsTypeId == Vfs::kVfsTypeDirectory && vnode.nodeTypeId == Vfs::kVfsDirectoryNodeType);
-
-}
 
 Result<void, Error>
 Vfs::link(User user, StringView linkName, INode::Id from, INode::Id to) {
@@ -229,7 +237,7 @@ Vfs::link(User user, StringView linkName, INode::Id from, INode::Id to) {
     }
 
 	auto& dirNode = *maybeNode;
-	if (!isDir(dirNode)) {
+	if (!isDirectory(dirNode)) {
 		return makeError(GenericError::NOTDIR, "link");
     }
 
@@ -262,7 +270,7 @@ Vfs::unlink(User user, StringView name, INode::Id fromDir) {
     }
 
 	auto& dirNode = *maybeDirNode;
-	if (!isDir(dirNode)) {
+	if (!isDirectory(dirNode)) {
 		return makeError(GenericError::NOTDIR, "unlink");
     }
 
@@ -302,7 +310,7 @@ Vfs::lookup(INode::Id dirNodeId, StringView name) const {
     }
 
 	auto const& dirNode = *maybeNode;
-	if (!isDir(dirNode)) {
+	if (!isDirectory(dirNode)) {
         return none;
     }
 
@@ -366,7 +374,7 @@ Vfs::enumerateDirectory(INode::Id dirNodeId, User user) const {
     }
 
 	auto& dirNode = *maybeNode;
-	if (!isDir(dirNode)) {
+	if (!isDirectory(dirNode)) {
 		return makeError(GenericError::NOTDIR, "enumerateDirectory");
     }
 
@@ -404,7 +412,7 @@ Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, 
 	}
 
 	auto const& dir = *maybeRoot;
-	if (!isDir(dir)) {
+	if (!isDirectory(dir)) {
 		return makeError(GenericError::NOTDIR, "mkNode");
 	}
 

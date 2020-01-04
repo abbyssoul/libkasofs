@@ -38,9 +38,10 @@ struct Filesystem {
 
 	virtual ~Filesystem();
 
-	virtual Solace::Result<INode, Error> createNode(NodeType type, User owner, FilePermissions perms) = 0;
-
 	virtual FilePermissions defaultFilePermissions(NodeType type) const noexcept = 0;
+
+	virtual auto createNode(NodeType type, User owner, FilePermissions perms) -> Solace::Result<INode, Error> = 0;
+	virtual auto destroyNode(INode& node) -> Solace::Result<void, Error> = 0;
 
 	virtual auto open(INode& node, Permissions op) -> Solace::Result<OpenFID, Error> = 0;
 
@@ -65,6 +66,18 @@ struct File {
 		, _fid{openId}
 		, _inode{node}
 	{}
+
+	enum class SeekDirection {
+		FromStart,
+		Relative
+	};
+
+	Solace::Result<size_type, Error>
+	seekRead(size_type offset, SeekDirection direction);
+
+	Solace::Result<size_type, Error>
+	seekWrite(size_type offset, SeekDirection direction);
+
 
 	Solace::Result<size_type, Error>
 	read(Solace::MutableMemoryView dest);
