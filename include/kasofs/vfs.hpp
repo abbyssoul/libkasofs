@@ -245,22 +245,22 @@ public:
 	unlink(User user, Solace::StringView name, INode::Id from);
 
 
-    template<typename F>
+	template<typename P, typename F>
 	Solace::Result<Entry, Error>
-	walk(User user, INode::Id rootId, Solace::Path const& path, F&& f) const {
+	walk(User user, INode::Id rootId, P const& path, F&& f) const {
         auto maybeNode = nodeById(rootId);
         if (!maybeNode) {   // Valid file id required to start the walk
 			return makeError(Solace::GenericError::BADF , "walk");
         }
 
         auto resultingEntry = Entry{kThisDir, rootId};
-		for (auto const& pathSegment : path) {
+		for (auto pathSegment : path) {
 			INode node = *maybeNode;
 			if (!node.userCan(user, Permissions::READ)) {
 				return makeError(Solace::GenericError::PERM, "walk");
             }
 
-			auto maybeEntry = lookup(resultingEntry.nodeId, pathSegment.view());
+			auto maybeEntry = lookup(resultingEntry.nodeId, pathSegment);
             if (!maybeEntry) {
 				return makeError(Solace::GenericError::NOENT, "walk");
             }
