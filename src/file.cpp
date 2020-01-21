@@ -6,7 +6,7 @@
 *
 *  Written by Ivan Ryabov <abbyssoul@gmail.com>
 */
-#include "kasofs/fs.hpp"
+#include "kasofs/file.hpp"
 #include "kasofs/vfs.hpp"
 
 

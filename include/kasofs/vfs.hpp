@@ -16,11 +16,12 @@
 
 #include "vinode.hpp"
 #include "fs.hpp"
+#include "file.hpp"
+
 
 #include <solace/result.hpp>
 #include <solace/error.hpp>
 #include <solace/posixErrorDomain.hpp>
-
 #include <solace/path.hpp>
 
 #include <vector>
@@ -28,7 +29,6 @@
 
 
 namespace kasofs {
-
 
 /**
  * Directory entry

@@ -23,9 +23,8 @@
 
 namespace kasofs {
 
-// Alias for the error type used throughout the library
+/// Alias for the error type used throughout the library
 using Error = Solace::Error;
-
 
 
 /**
@@ -51,50 +50,6 @@ struct Filesystem {
 	virtual auto write(INode& node, size_type offset, Solace::MemoryView src) -> Solace::Result<size_type, Error> = 0;
 
 	virtual auto close(INode& node, OpenFID fid) -> Solace::Result<void, Error> = 0;
-};
-
-
-
-struct File {
-	using size_type = Filesystem::size_type;
-
-	~File();
-
-	constexpr File(struct Vfs* fs, INode::Id nodeId, INode node, Filesystem::OpenFID openId) noexcept
-		: _vfs{fs}
-		, _nodeId{nodeId}
-		, _fid{openId}
-		, _inode{node}
-	{}
-
-	enum class SeekDirection {
-		FromStart,
-		Relative
-	};
-
-	Solace::Result<size_type, Error>
-	seekRead(size_type offset, SeekDirection direction);
-
-	Solace::Result<size_type, Error>
-	seekWrite(size_type offset, SeekDirection direction);
-
-
-	Solace::Result<size_type, Error>
-	read(Solace::MutableMemoryView dest);
-
-	Solace::Result<size_type, Error>
-	write(Solace::MemoryView src);
-
-	auto size() const noexcept { return _inode.dataSize; }
-
-private:
-	struct Vfs* const			_vfs;
-	INode::Id const				_nodeId;
-	Filesystem::OpenFID const	_fid;
-	INode						_inode;
-
-	size_type					_readOffset{0};
-	size_type					_writeOffset{0};
 };
 
 
