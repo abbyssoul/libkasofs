@@ -2,11 +2,10 @@ cmake_minimum_required(VERSION 3.12)
 project(kasofs)
 set(PROJECT_DESCRIPTION "Virtual File system in modern C++")
 
-
-# Custom build target to generate code coverage:
-# Don't want this to run on every build.
-option(COVERALLS "Generate coveralls data" OFF)
+option(COVERAGE "Generate coverage data" OFF)
 option(SANITIZE "Enable 'sanitize' compiler flag" OFF)
+option(PROFILE "Enable profile information" OFF)
+option(PKG_CONFIG "Enable installation of pkgconfig file" OFF)
 
 # Include common compile flag
 include(cmake/compile_flags.cmake)
@@ -30,8 +29,10 @@ add_subdirectory(examples EXCLUDE_FROM_ALL)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # Install pkgconfig descriptor
-install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.pc
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
+if(PKG_CONFIG)
+  install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.pc
+      DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
+endif()
 
 # ---------------------------------
 # Show build configuration status:
@@ -39,4 +40,4 @@ install(FILES ${CMAKE_BINARY_DIR}/lib${PROJECT_NAME}.pc
 message(STATUS, "BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 message(STATUS, "CXXFLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS, "SANITIZE: ${SANITIZE}")
-message(STATUS, "COVERALLS: ${COVERALLS}")
+message(STATUS, "COVERAGE: ${COVERAGE}")
