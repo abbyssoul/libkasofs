@@ -327,12 +327,12 @@ TEST_F(MockFsTest, unlinkingOpenFileRemovesNodeFromIndex) {
 
 TEST_F(MockFsTest, linkingOwnsName) {
 	char linkName[16];
-	strcpy(linkName, "name1");
+	strncpy(linkName, "name1", sizeof(linkName));
 
 	auto maybeId = vfs.mknode(vfs.rootId(), linkName, fsId, MockFs::dataType(), owner);
 	ASSERT_TRUE(maybeId.isOk());
 
-	strcpy(linkName, "eman3");
+	strncpy(linkName, "eman3", sizeof(linkName));
 
 	EXPECT_EQ(2, vfs.size());
 
