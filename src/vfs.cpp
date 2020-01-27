@@ -31,7 +31,7 @@ Filesystem::~Filesystem() = default;
 
 struct DirFs : public Filesystem {
 
-	Result<INode, Error> createNode(NodeType type, User owner, FilePermissions perms) override {
+	kasofs::Result<INode> createNode(NodeType type, User owner, FilePermissions perms) override {
 		if (Vfs::kVfsDirectoryNodeType != type) {
 			return makeError(SystemErrors::MEDIUMTYPE, "DirFs::createNode");
 		}
@@ -44,7 +44,7 @@ struct DirFs : public Filesystem {
 		return Ok(std::move(node));
 	}
 
-	Result<void, Error> destroyNode(INode& node) override {
+	kasofs::Result<void> destroyNode(INode& node) override {
 		_adjacencyList.erase(node.vfsData);
 		return Ok();
 	}
@@ -54,26 +54,30 @@ struct DirFs : public Filesystem {
 		return FilePermissions{0666};
 	}
 
-	auto open(INode&, Permissions op) -> Result<OpenFID, Error> override {
+	auto open(INode&, Permissions op) -> kasofs::Result<OpenFID> override {
 		if (op.can(Permissions::READ) || op.can(Permissions::WRITE))
 			return Ok<OpenFID>(0);
 
 		return makeError(GenericError::PERM, "DirFS::open");
 	}
 
-	auto read(INode&, size_type, MutableMemoryView) -> Result<size_type, Error> override {
+	auto read(INode&, size_type, MutableMemoryView) -> kasofs::Result<size_type> override {
 		return makeError(GenericError::ISDIR, "DirFs::write");
 	}
 
-	auto write(INode&, size_type, MemoryView) -> Result<size_type, Error> override {
+	auto write(INode&, size_type, MemoryView) -> kasofs::Result<size_type> override {
 		return makeError(GenericError::ISDIR, "DirFs::write");
 	}
 
-	auto close(INode&, OpenFID) -> Result<void, Error> override {
+	auto seek(INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
+		return makeError(GenericError::ISDIR, "DirFs::seek");
+	}
+
+	auto close(INode&, OpenFID) -> kasofs::Result<void> override {
 		return Ok();
 	}
 
-	Result<void, Error> addEntry(INode const& dirNode, Entry entry) {
+	kasofs::Result<void> addEntry(INode const& dirNode, Entry entry) {
 		if (dirNode.nodeTypeId != Vfs::kVfsDirectoryNodeType)
 			return makeError(GenericError::NOTDIR , "DirFs::addEntry");
 
@@ -87,7 +91,7 @@ struct DirFs : public Filesystem {
 	}
 
 
-	Result<Optional<INode::Id>, Error> removeEntry(INode& dirNode, StringView name) {
+	kasofs::Result<Optional<INode::Id>> removeEntry(INode& dirNode, StringView name) {
 		if (dirNode.nodeTypeId != Vfs::kVfsDirectoryNodeType)
 			return makeError(GenericError::NOTDIR , "DirFs::removeEntry");
 
@@ -167,7 +171,7 @@ Vfs::Vfs(User owner, FilePermissions rootPerms)
 }
 
 
-Result<void, Error>
+kasofs::Result<void>
 Vfs::unregisterFileSystem(VfsId fsId) {
 	if (fsId == kVfsTypeDirectory) {
 		return makeError(GenericError::BADF, "unregisterFileSystem");
@@ -183,7 +187,7 @@ Vfs::unregisterFileSystem(VfsId fsId) {
 }
 
 /*
-Result<void, Error>
+kasofs::Result<void>
 Vfs::mount(User user, INode::Id mountingPoint, VfsId fs) {
     auto maybeMountingPoint = nodeById(mountingPoint);
     if (!maybeMountingPoint) {
@@ -201,7 +205,7 @@ Vfs::mount(User user, INode::Id mountingPoint, VfsId fs) {
 }
 
 
-Result<void, Error>
+kasofs::Result<void>
 Vfs::umount(User user, INode::Id mountingPoint) {
     auto maybeMountingPoint = nodeById(mountingPoint);
     if (!maybeMountingPoint) {
@@ -225,7 +229,7 @@ Vfs::umount(User user, INode::Id mountingPoint) {
 
 
 
-Result<void, Error>
+kasofs::Result<void>
 Vfs::link(User user, StringView linkName, INode::Id from, INode::Id to) {
     if (from == to) {
 		return makeError(GenericError::BADF, "link:from::to");
@@ -262,7 +266,7 @@ Vfs::link(User user, StringView linkName, INode::Id from, INode::Id to) {
 }
 
 
-Result<void, Error>
+kasofs::Result<void>
 Vfs::unlink(User user, StringView name, INode::Id fromDir) {
 	auto maybeDirNode = nodeById(fromDir);
 	if (!maybeDirNode) {
@@ -338,7 +342,7 @@ void Vfs::updateNode(INode::Id id, INode inode) {
 }
 
 
-Result<File, Error>
+kasofs::Result<File>
 Vfs::open(User user, INode::Id fid, Permissions op) {
 	auto maybeNode = nodeById(fid);
 	if (!maybeNode) {
@@ -366,7 +370,7 @@ Vfs::open(User user, INode::Id fid, Permissions op) {
 
 
 
-Result<EntriesIterator, Error>
+kasofs::Result<EntriesIterator>
 Vfs::enumerateDirectory(INode::Id dirNodeId, User user) const {
     auto maybeNode = nodeById(dirNodeId);
     if (!maybeNode) {
@@ -398,13 +402,13 @@ Vfs::findFs(VfsId id) const {
 }
 
 
-Result<INode::Id, Error>
+kasofs::Result<INode::Id>
 Vfs::createDirectory(INode::Id where, StringView name, User user, FilePermissions perms) {
 	return mknode(where, name, kVfsTypeDirectory, kVfsDirectoryNodeType, user, perms);
 }
 
 
-Result<INode::Id, Error>
+kasofs::Result<INode::Id>
 Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms) {
 	auto const maybeRoot = nodeById(where);
 	if (!maybeRoot) {
@@ -435,7 +439,7 @@ Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, 
 }
 
 
-Result<INode::Id, Error>
+kasofs::Result<INode::Id>
 Vfs::createUnlinkedNode(VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms, FilePermissions baseP) {
 	auto maybeVfs = findFs(type);
 	if (!maybeVfs) {  // Unsupported VFS specified

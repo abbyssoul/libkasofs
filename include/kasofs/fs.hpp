@@ -26,6 +26,8 @@ namespace kasofs {
 /// Alias for the error type used throughout the library
 using Error = Solace::Error;
 
+template<typename T>
+using Result = Solace::Result<T, Error>;
 
 /**
  * A interface of a file system driver that implements IO operations..
@@ -35,21 +37,27 @@ struct Filesystem {
 	using NodeType = VfsNodeType;
 	using OpenFID = INode::Id;
 
+	enum class SeekDirection {
+		FromStart,
+		Relative
+	};
+
 	virtual ~Filesystem();
 
 	virtual FilePermissions defaultFilePermissions(NodeType type) const noexcept = 0;
 
-	virtual auto createNode(NodeType type, User owner, FilePermissions perms) -> Solace::Result<INode, Error> = 0;
-	virtual auto destroyNode(INode& node) -> Solace::Result<void, Error> = 0;
+	virtual auto createNode(NodeType type, User owner, FilePermissions perms) -> Result<INode> = 0;
+	virtual auto destroyNode(INode& node) -> Result<void> = 0;
 
-	virtual auto open(INode& node, Permissions op) -> Solace::Result<OpenFID, Error> = 0;
+	virtual auto open(INode& node, Permissions op) -> Result<OpenFID> = 0;
 
-	virtual auto read(INode& node, size_type offset, Solace::MutableMemoryView dest) ->
-	Solace::Result<size_type, Error> = 0;
+	virtual auto read(INode& node, size_type offset, Solace::MutableMemoryView dest) ->Result<size_type> = 0;
 
-	virtual auto write(INode& node, size_type offset, Solace::MemoryView src) -> Solace::Result<size_type, Error> = 0;
+	virtual auto write(INode& node, size_type offset, Solace::MemoryView src) -> Result<size_type> = 0;
 
-	virtual auto close(INode& node, OpenFID fid) -> Solace::Result<void, Error> = 0;
+	virtual auto seek(INode& node, size_type offset, SeekDirection direction) -> Result<size_type> = 0;
+
+	virtual auto close(INode& node, OpenFID fid) -> Result<void> = 0;
 };
 
 

@@ -33,23 +33,23 @@ struct MockFs: public Filesystem {
 		return FilePermissions{0777};
 	}
 
-	Result<INode, Error> createNode(NodeType type, User owner, FilePermissions perms) override {
+	kasofs::Result<INode> createNode(NodeType type, User owner, FilePermissions perms) override {
 		INode node{type, owner, perms};
 		node.dataSize = buffer.size();
 
 		return Ok(std::move(node));
 	}
 
-	Result<void, Error> destroyNode(INode&) override {
+	kasofs::Result<void> destroyNode(INode&) override {
 		return Ok();
 	}
 
 
-	auto open(INode&, Permissions) -> Result<OpenFID, Error> override {
+	auto open(INode&, Permissions) -> kasofs::Result<OpenFID> override {
 		return Ok<OpenFID>(0);
 	}
 
-	Result<size_type, Error> read(INode&, size_type offset, MutableMemoryView dest) override {
+	kasofs::Result<size_type> read(INode&, size_type offset, MutableMemoryView dest) override {
 		if (offset >= buffer.size())
 			return makeError(BasicError::Overflow, "MockFs::read");
 
@@ -62,7 +62,7 @@ struct MockFs: public Filesystem {
 		return Ok(data.size());
 	}
 
-	Result<size_type, Error> write(INode& node, size_type offset, MemoryView src) override {
+	kasofs::Result<size_type> write(INode& node, size_type offset, MemoryView src) override {
 		auto const newSize = offset + src.size();
 		buffer.reserve(newSize);
 		if (buffer.size() < newSize) {
@@ -80,7 +80,11 @@ struct MockFs: public Filesystem {
 		return Ok(src.size());
 	}
 
-	Result<void, Error> close(INode&, OpenFID) override {
+	auto seek(INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
+		return makeError(GenericError::ISDIR, "MockFs::seek");
+	}
+
+	kasofs::Result<void> close(INode&, OpenFID) override {
 		return Ok();
 	}
 

@@ -34,21 +34,16 @@ struct File {
 		, _inode{node}
 	{}
 
-	enum class SeekDirection {
-		FromStart,
-		Relative
-	};
+	Result<size_type>
+	seekRead(size_type offset, Filesystem::SeekDirection direction);
 
-	Solace::Result<size_type, Error>
-	seekRead(size_type offset, SeekDirection direction);
+	Result<size_type>
+	seekWrite(size_type offset, Filesystem::SeekDirection direction);
 
-	Solace::Result<size_type, Error>
-	seekWrite(size_type offset, SeekDirection direction);
-
-	Solace::Result<size_type, Error>
+	Result<size_type>
 	read(Solace::MutableMemoryView dest);
 
-	Solace::Result<size_type, Error>
+	Result<size_type>
 	write(Solace::MemoryView src);
 
 	auto size() const noexcept { return _inode.dataSize; }

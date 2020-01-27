@@ -150,7 +150,7 @@ public:
 	 */
 	auto nodeById(INode::Id id) const noexcept -> Solace::Optional<INode>;
 
-	auto nodeById(Solace::Result<INode::Id, Error> const& maybeId) const noexcept {
+	auto nodeById(Result<INode::Id> const& maybeId) const noexcept {
 		return maybeId
 				? nodeById(*maybeId)
 				: Solace::none;
@@ -168,8 +168,7 @@ public:
 	 * @return Id of the registered vfs or an error.
 	 */
 	template<class Type, typename...Args>
-	Solace::Result<VfsId, Error>
-	registerFilesystem(Args&& ...args) {
+	Result<VfsId> registerFilesystem(Args&& ...args) {
 		auto fs = std::make_unique<Type>(std::forward<Args>(args)...);
 
 		const auto regId = _nextId;
@@ -192,7 +191,7 @@ public:
 	 * @param VfsId Id of the previously registered vfs
 	 * @return Void or an error.
 	 */
-	Solace::Result<void, Error>
+	Result<void>
 	unregisterFileSystem(VfsId VfsId);
 
 	/**
@@ -202,7 +201,7 @@ public:
 	 * @param fsId Id of the previously registered vfs.
 	 * @return Void or an error.
 	 */
-// Solace::Result<void, Error>
+// Result<void>
 // mount(User user, INode::Id mountingPoint, VfsId fsId);
 
 	/**
@@ -211,7 +210,7 @@ public:
 	 * @param mountingPoint INode to unmount vfs from.
 	 * @return Void or an error.
 	 */
-// Solace::Result<void, Error>
+// Result<void>
 // umount(User user, INode::Id mountingPoint);
 
     /////////////////////////////////////////////////////////////
@@ -231,7 +230,7 @@ public:
      *
      * @note It is not an error to create multiple links to the same node B with different names.
      */
-	Solace::Result<void, Error>
+	Result<void>
 	link(User user, Solace::StringView name, INode::Id from, INode::Id to);
 
     /**
@@ -241,12 +240,12 @@ public:
      * @param from Node a link should be removed from.
      * @return Void or error.
      */
-	Solace::Result<void, Error>
+	Result<void>
 	unlink(User user, Solace::StringView name, INode::Id from);
 
 
 	template<typename P, typename F>
-	Solace::Result<Entry, Error>
+	Result<Entry>
 	walk(User user, INode::Id rootId, P const& path, F&& f) const {
         auto maybeNode = nodeById(rootId);
         if (!maybeNode) {   // Valid file id required to start the walk
@@ -275,7 +274,7 @@ public:
 			f(*maybeNode);
         }
 
-        return Solace::Ok(resultingEntry);
+		return resultingEntry;
     }
 
 	auto walk(User user, INode::Id rootId, Solace::Path const& path) const {
@@ -296,7 +295,7 @@ public:
 	 *
 	 * @return Index of the new node on success or an error.
 	 */
-	Solace::Result<INode::Id, Error>
+	Result<INode::Id>
 	mknode(INode::Id where,
 		   Solace::StringView name,
 		   VfsId fsType,
@@ -312,11 +311,11 @@ public:
 	 * @param perms Access permissions for a new node.
 	 * @return Either an entry record or none.
 	 */
-	Solace::Result<INode::Id, Error>
+	Result<INode::Id>
 	createDirectory(INode::Id where, Solace::StringView name, User user, FilePermissions perms = {0666});
 
     /// Return iterator for directory's entries of the give dirNode
-	Solace::Result<EntriesIterator, Error>
+	Result<EntriesIterator>
 	enumerateDirectory(INode::Id dirId, User user) const;
 
 	/**
@@ -326,7 +325,7 @@ public:
 	 * @param op Opearions to be performed on the file.
 	 * @return Result - either an IO object or an error.
 	 */
-	Solace::Result<File, Error>
+	Result<File>
 	open(User user, INode::Id fid, Permissions op);
 
 protected:
@@ -346,7 +345,7 @@ protected:
 	}
 
 	/// Create unlinked node
-	Solace::Result<INode::Id, Error>
+	Result<INode::Id>
 	createUnlinkedNode(VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms, FilePermissions dirPerms);
 
 private:

@@ -32,7 +32,7 @@ File::~File() {
 }
 
 
-Result<File::size_type, Error>
+kasofs::Result<File::size_type>
 File::read(MutableMemoryView dest) {
 	auto maybeFs = _vfs->findFs(_inode.fsTypeId);
 	if (!maybeFs) {
@@ -50,7 +50,7 @@ File::read(MutableMemoryView dest) {
 }
 
 
-Result<File::size_type, Error>
+kasofs::Result<File::size_type>
 File::write(MemoryView src) {
 	auto maybeFs = _vfs->findFs(_inode.fsTypeId);
 	if (!maybeFs) {
@@ -67,6 +67,46 @@ File::write(MemoryView src) {
 	_vfs->updateNode(_nodeId, _inode);
 
 	return writeResult;
+}
+
+
+kasofs::Result<File::size_type>
+File::seekRead(size_type offset, Filesystem::SeekDirection direction) {
+	auto maybeFs = _vfs->findFs(_inode.fsTypeId);
+	if (!maybeFs) {
+		return makeError(GenericError::NXIO, "File::seekWrite");
+	}
+
+	auto seekResult = (*maybeFs)->seek(_inode, offset, direction);
+	if (!seekResult) {
+		return seekResult.moveError();
+	}
+
+	_readOffset = *seekResult;
+
+	_vfs->updateNode(_nodeId, _inode);
+
+	return Solace::Result<size_type, Error>{types::okTag, _readOffset};
+}
+
+
+kasofs::Result<File::size_type>
+File::seekWrite(size_type offset, Filesystem::SeekDirection direction) {
+	auto maybeFs = _vfs->findFs(_inode.fsTypeId);
+	if (!maybeFs) {
+		return makeError(GenericError::NXIO, "File::seekWrite");
+	}
+
+	auto seekResult = (*maybeFs)->seek(_inode, offset, direction);
+	if (!seekResult) {
+		return seekResult.moveError();
+	}
+
+	_writeOffset = *seekResult;
+
+	_vfs->updateNode(_nodeId, _inode);
+
+	return Solace::Result<size_type, Error>{types::okTag, _writeOffset};
 }
 
 
