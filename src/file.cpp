@@ -25,7 +25,7 @@ File::~File() {
 	if (_vfs) {
 		_vfs->findFs(_inode.fsTypeId)
 				.flatMap([this](Filesystem* fs) -> Optional<Unit>{
-					fs->close(_inode, _fid);
+					fs->close(_fid, _inode);
 					return none;
 				});
 	}
@@ -39,7 +39,7 @@ File::read(MutableMemoryView dest) {
 		return makeError(GenericError::NXIO, "File::read");
 	}
 
-	auto readResult = (*maybeFs)->read(_inode, _readOffset, dest);
+	auto readResult = (*maybeFs)->read(_fid, _inode, _readOffset, dest);
 	if (!readResult) {
 		return readResult.moveError();
 	}
@@ -57,7 +57,7 @@ File::write(MemoryView src) {
 		return makeError(GenericError::NXIO, "File::write");
 	}
 
-	auto writeResult = (*maybeFs)->write(_inode, _writeOffset, src);
+	auto writeResult = (*maybeFs)->write(_fid, _inode, _writeOffset, src);
 	if (!writeResult) {
 		return writeResult.moveError();
 	}
@@ -77,7 +77,7 @@ File::seekRead(size_type offset, Filesystem::SeekDirection direction) {
 		return makeError(GenericError::NXIO, "File::seekWrite");
 	}
 
-	auto seekResult = (*maybeFs)->seek(_inode, offset, direction);
+	auto seekResult = (*maybeFs)->seek(_fid, _inode, offset, direction);
 	if (!seekResult) {
 		return seekResult.moveError();
 	}
@@ -86,7 +86,7 @@ File::seekRead(size_type offset, Filesystem::SeekDirection direction) {
 
 	_vfs->updateNode(_nodeId, _inode);
 
-	return Solace::Result<size_type, Error>{types::okTag, _readOffset};
+	return Result<size_type>{types::okTag, _readOffset};
 }
 
 
@@ -97,7 +97,7 @@ File::seekWrite(size_type offset, Filesystem::SeekDirection direction) {
 		return makeError(GenericError::NXIO, "File::seekWrite");
 	}
 
-	auto seekResult = (*maybeFs)->seek(_inode, offset, direction);
+	auto seekResult = (*maybeFs)->seek(_fid, _inode, offset, direction);
 	if (!seekResult) {
 		return seekResult.moveError();
 	}
@@ -106,55 +106,5 @@ File::seekWrite(size_type offset, Filesystem::SeekDirection direction) {
 
 	_vfs->updateNode(_nodeId, _inode);
 
-	return Solace::Result<size_type, Error>{types::okTag, _writeOffset};
+	return Result<size_type>{types::okTag, _writeOffset};
 }
-
-
-/*
-Result<ByteReader, Error>
-Vfs::reader(User user, INode::Id nodeId) {
-	auto maybeNode = nodeById(nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::BADF, "reader");
-	}
-
-	auto& node = *maybeNode;
-	if (node.type() != INode::Type::Data) {
-		return makeError(GenericError::ISDIR, "reader");
-	}
-
-	if (!node.userCan(user, Permissions::READ)) {
-		return makeError(GenericError::PERM, "reader");
-	}
-
-	auto& fs = vfs[node.deviceId];
-	if (!fs.read)
-		return makeError(GenericError::IO, "reader");
-
-	return Ok(fs.read(node));
-}
-
-
-Result<ByteWriter, Error>
-Vfs::writer(User user, INode::Id nodeId) {
-	auto maybeNode = nodeById(nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::BADF, "writer");
-	}
-
-	auto& node = *maybeNode;
-	if (node.type() != INode::Type::Data) {
-		return makeError(GenericError::ISDIR, "writer");
-	}
-
-	if (!node.userCan(user, Permissions::WRITE)) {
-		return makeError(GenericError::PERM, "writer");
-	}
-
-	auto& fs = vfs[node.deviceId];
-	if (!fs.write)
-		return makeError(GenericError::IO, "writer");
-
-	return Ok(fs.write(node));
-}
-*/

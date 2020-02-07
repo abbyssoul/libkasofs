@@ -20,7 +20,10 @@
 using namespace kasofs;
 using namespace Solace;
 
-struct MockFs: public Filesystem {
+
+namespace  {
+
+struct MockFs : public Filesystem {
 	static uint32 dataType() noexcept {
 		return 312;
 	}
@@ -49,7 +52,7 @@ struct MockFs: public Filesystem {
 		return Ok<OpenFID>(0);
 	}
 
-	kasofs::Result<size_type> read(INode&, size_type offset, MutableMemoryView dest) override {
+	kasofs::Result<size_type> read(OpenFID, INode&, size_type offset, MutableMemoryView dest) override {
 		if (offset >= buffer.size())
 			return makeError(BasicError::Overflow, "MockFs::read");
 
@@ -62,7 +65,7 @@ struct MockFs: public Filesystem {
 		return Ok(data.size());
 	}
 
-	kasofs::Result<size_type> write(INode& node, size_type offset, MemoryView src) override {
+	kasofs::Result<size_type> write(OpenFID, INode& node, size_type offset, MemoryView src) override {
 		auto const newSize = offset + src.size();
 		buffer.reserve(newSize);
 		if (buffer.size() < newSize) {
@@ -80,11 +83,11 @@ struct MockFs: public Filesystem {
 		return Ok(src.size());
 	}
 
-	auto seek(INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
+	auto seek(OpenFID, INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
 		return makeError(GenericError::ISDIR, "MockFs::seek");
 	}
 
-	kasofs::Result<void> close(INode&, OpenFID) override {
+	kasofs::Result<void> close(OpenFID, INode&) override {
 		return Ok();
 	}
 
@@ -109,6 +112,8 @@ struct SynthFs: public MockFs {
 	}
 
 };
+
+}  // namespace
 
 
 

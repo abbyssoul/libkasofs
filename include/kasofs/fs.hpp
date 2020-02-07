@@ -51,13 +51,13 @@ struct Filesystem {
 
 	virtual auto open(INode& node, Permissions op) -> Result<OpenFID> = 0;
 
-	virtual auto read(INode& node, size_type offset, Solace::MutableMemoryView dest) ->Result<size_type> = 0;
+	virtual auto read(OpenFID fid, INode& node, size_type off, Solace::MutableMemoryView dest) ->Result<size_type> = 0;
 
-	virtual auto write(INode& node, size_type offset, Solace::MemoryView src) -> Result<size_type> = 0;
+	virtual auto write(OpenFID fid, INode& node, size_type offset, Solace::MemoryView src) -> Result<size_type> = 0;
 
-	virtual auto seek(INode& node, size_type offset, SeekDirection direction) -> Result<size_type> = 0;
+	virtual auto seek(OpenFID fid, INode& node, size_type offset, SeekDirection direction) -> Result<size_type> = 0;
 
-	virtual auto close(INode& node, OpenFID fid) -> Result<void> = 0;
+	virtual auto close(OpenFID fid, INode& node) -> Result<void> = 0;
 };
 
 

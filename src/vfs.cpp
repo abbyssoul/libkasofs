@@ -61,19 +61,19 @@ struct DirFs : public Filesystem {
 		return makeError(GenericError::PERM, "DirFS::open");
 	}
 
-	auto read(INode&, size_type, MutableMemoryView) -> kasofs::Result<size_type> override {
+	auto read(OpenFID, INode&, size_type, MutableMemoryView) -> kasofs::Result<size_type> override {
 		return makeError(GenericError::ISDIR, "DirFs::write");
 	}
 
-	auto write(INode&, size_type, MemoryView) -> kasofs::Result<size_type> override {
+	auto write(OpenFID, INode&, size_type, MemoryView) -> kasofs::Result<size_type> override {
 		return makeError(GenericError::ISDIR, "DirFs::write");
 	}
 
-	auto seek(INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
+	auto seek(OpenFID, INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
 		return makeError(GenericError::ISDIR, "DirFs::seek");
 	}
 
-	auto close(INode&, OpenFID) -> kasofs::Result<void> override {
+	auto close(OpenFID, INode&) -> kasofs::Result<void> override {
 		return Ok();
 	}
 
