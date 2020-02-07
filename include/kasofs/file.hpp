@@ -31,7 +31,6 @@ struct File {
 		: _vfs{fs}
 		, _fid{openId}
 		, _nodeId{nodeId}
-		, _inode{node}
 	{}
 
 	Result<size_type>
@@ -46,14 +45,16 @@ struct File {
 	Result<size_type>
 	write(Solace::MemoryView src);
 
-	auto size() const noexcept { return _inode.dataSize; }
-	auto stat() const noexcept { return _inode; }
+	Result<INode> stat() const noexcept;
+
+	Result<INode::size_type> size() const noexcept {
+		return stat().then([](INode const& node) { return node.dataSize; });
+	}
 
 private:
 	struct Vfs* const			_vfs;
 	Filesystem::OpenFID const	_fid;
 	INode::Id const				_nodeId;
-	INode						_inode;
 
 	size_type					_readOffset{0};
 	size_type					_writeOffset{0};

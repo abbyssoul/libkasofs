@@ -329,7 +329,7 @@ Vfs::nodeById(INode::Id id) const noexcept {
         return none;
     }
 
-	return _index.at(id);
+	return _index[id];
 }
 
 
