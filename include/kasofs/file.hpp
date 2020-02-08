@@ -27,11 +27,34 @@ struct File {
 
 	~File();
 
-	constexpr File(struct Vfs* fs, INode::Id nodeId, INode node, Filesystem::OpenFID openId) noexcept
+	constexpr File(struct Vfs* fs, INode::Id nodeId, Filesystem::OpenFID openId) noexcept
 		: _vfs{fs}
 		, _fid{openId}
 		, _nodeId{nodeId}
 	{}
+
+	constexpr File(File&& rhs) noexcept
+		: _vfs{Solace::exchange(rhs._vfs, nullptr)}
+		, _fid{Solace::exchange(rhs._fid, -1)}
+		, _nodeId{Solace::exchange(rhs._nodeId, -1)}
+	{}
+
+	File& operator= (File&& rhs) noexcept {
+		return swap(rhs);
+	}
+
+	File& swap(File& rhs) noexcept {
+		using std::swap;
+		swap(_vfs, rhs._vfs);
+		swap(_fid, rhs._fid);
+		swap(_nodeId, rhs._nodeId);
+
+		swap(_readOffset, rhs._readOffset);
+		swap(_writeOffset, rhs._writeOffset);
+
+		return *this;
+	}
+
 
 	Result<size_type>
 	seekRead(size_type offset, Filesystem::SeekDirection direction);
@@ -52,14 +75,19 @@ struct File {
 	}
 
 private:
-	struct Vfs* const			_vfs;
-	Filesystem::OpenFID const	_fid;
-	INode::Id const				_nodeId;
+	struct Vfs*				_vfs;
+	Filesystem::OpenFID		_fid;
+	INode::Id				_nodeId;
 
-	size_type					_readOffset{0};
-	size_type					_writeOffset{0};
+	size_type				_readOffset{0};
+	size_type				_writeOffset{0};
 };
 
+
+inline void
+swap(File& lhs, File& rhs) noexcept {
+	lhs.swap(rhs);
+}
 
 }  // namespace kasofs
 #endif  // KASOFS_FILE_HPP

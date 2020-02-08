@@ -36,19 +36,23 @@ struct MockFs : public Filesystem {
 		return FilePermissions{0777};
 	}
 
-	kasofs::Result<INode> createNode(NodeType type, User owner, FilePermissions perms) override {
+	kasofs::Result<INode>
+	createNode(NodeType type, User owner, FilePermissions perms) override {
 		INode node{type, owner, perms};
 		node.dataSize = buffer.size();
 
+		_nCreated += 1;
 		return Ok(std::move(node));
 	}
 
 	kasofs::Result<void> destroyNode(INode&) override {
+		_nDestroyed += 1;
 		return Ok();
 	}
 
 
 	auto open(INode&, Permissions) -> kasofs::Result<OpenFID> override {
+		_nOpened += 1;
 		return Ok<OpenFID>(0);
 	}
 
@@ -88,11 +92,23 @@ struct MockFs : public Filesystem {
 	}
 
 	kasofs::Result<void> close(OpenFID, INode&) override {
+		_nClosed += 1;
 		return Ok();
 	}
 
+	auto filesOpen() const noexcept { return _nOpened; }
+	auto filesClosed() const noexcept { return _nClosed; }
+	auto nodesCreated() const noexcept { return _nCreated; }
+	auto nodesDestroyed() const noexcept { return _nCreated; }
+
 private:
 	std::string buffer;
+
+	uint32 _nCreated{0};
+	uint32 _nDestroyed{0};
+
+	uint32 _nOpened{0};
+	uint32 _nClosed{0};
 };
 
 
@@ -122,8 +138,8 @@ TEST(TestVfs, testContructor) {
 
 	auto root = vfs.nodeById(vfs.rootId());
 	ASSERT_TRUE(root.isSome());
-	EXPECT_EQ(0, (*root).fsTypeId);
-	EXPECT_EQ(1, vfs.size());
+	EXPECT_EQ(0U, (*root).fsTypeId);
+	EXPECT_EQ(1U, vfs.size());
 }
 
 
@@ -133,12 +149,24 @@ struct MockFsTest : public ::testing::Test {
 		auto maybeFsId = vfs.registerFilesystem<MockFs>("hello");
 		ASSERT_TRUE(maybeFsId.isOk());
 		fsId = *maybeFsId;
+
+		auto fs = vfs.findFs(fsId);
+		ASSERT_TRUE(fs.isSome());
+
+		_mockFs = static_cast<MockFs*>(*fs);
+	}
+
+	void TearDown() override {
+		EXPECT_EQ(_mockFs->filesOpen(), _mockFs->filesClosed());
+		EXPECT_EQ(_mockFs->nodesCreated(), _mockFs->nodesDestroyed());
 	}
 
 protected:
 	User	owner{0, 0};
 	Vfs		vfs{owner, FilePermissions{0600}};
 	VfsId	fsId{0};
+
+	MockFs*	_mockFs;
 };
 
 // FIXME: Test adding and removing linked direcories does not screews dir listing
@@ -211,7 +239,7 @@ TEST_F(MockFsTest, linkingNodesToDirecotryIsOk) {
 	EXPECT_TRUE(vfs.link(owner, "id-other", vfs.rootId(), *maybeId).isOk());
 
 	// There are only 2 nodes in vfs but 3 entries in the root directory pointing to the same node
-	EXPECT_EQ(2, vfs.size());
+	EXPECT_EQ(2U, vfs.size());
 
 	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
 	ASSERT_TRUE(enumerator.isOk());
@@ -237,7 +265,7 @@ TEST_F(MockFsTest, linkingNodesToNodesIsNotOk) {
 	auto maybeId2 = vfs.mknode(vfs.rootId(), "node-2", fsId, MockFs::dataType(), owner);
 	ASSERT_TRUE(maybeId1.isOk());
 	ASSERT_TRUE(maybeId2.isOk());
-	ASSERT_EQ(3, vfs.size());
+	ASSERT_EQ(3U, vfs.size());
 
 	EXPECT_TRUE(vfs.link(owner, "something-else", *maybeId1, *maybeId2).isError());
 	EXPECT_TRUE(vfs.link(owner, "id-other", *maybeId1, *maybeId2).isError());
@@ -277,9 +305,9 @@ TEST_F(MockFsTest, unlinkingNodeRemovesNodeWithNoRefTo) {
 	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
 	ASSERT_TRUE(maybeId.isOk());
 
-	EXPECT_EQ(2, vfs.size());
+	EXPECT_EQ(2U, vfs.size());
 	EXPECT_TRUE(vfs.unlink(owner, "id", vfs.rootId()).isOk());
-	EXPECT_EQ(1, vfs.size());
+	EXPECT_EQ(1U, vfs.size());
 
 	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
 	ASSERT_TRUE(enumerator.isOk());
@@ -325,12 +353,12 @@ TEST_F(MockFsTest, unlinkingOpenFileRemovesNodeFromIndex) {
 	auto maybeOpenedFile = vfs.open(owner, *maybeId, Permissions::WRITE);
 	ASSERT_TRUE(maybeOpenedFile.isOk());
 	EXPECT_TRUE(vfs.unlink(owner, "id", vfs.rootId()).isOk());
+	EXPECT_TRUE(vfs.nodeById(*maybeId).isNone());
 
 	char msg[] = "other-message";
-	ASSERT_TRUE((*maybeOpenedFile).write(wrapMemory(msg)));
-	EXPECT_EQ(sizeof(msg), (*maybeOpenedFile).size());
-
-	EXPECT_TRUE(vfs.nodeById(*maybeId).isNone());
+	auto& file = *maybeOpenedFile;
+	EXPECT_TRUE(file.write(wrapMemory(msg)));
+	EXPECT_EQ(sizeof(msg), file.size());
 }
 
 
@@ -343,7 +371,7 @@ TEST_F(MockFsTest, linkingOwnsName) {
 
 	strncpy(linkName, "eman3", sizeof(linkName));
 
-	EXPECT_EQ(2, vfs.size());
+	EXPECT_EQ(2U, vfs.size());
 
 	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
 	ASSERT_TRUE(enumerator.isOk());
@@ -362,25 +390,25 @@ TEST_F(MockFsTest, makingMockNodes) {
 	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
 	EXPECT_TRUE(maybeId.isOk());
 
-//    EXPECT_EQ(2, vfs.size());
+//    EXPECT_EQ(2U, vfs.size());
 //    EXPECT_EQ(1, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a regular data node
 //    auto maybeGen = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "generation");
 //    EXPECT_TRUE(maybeGen.isOk());
-//    EXPECT_EQ(3, vfs.size());
+//    EXPECT_EQ(3U, vfs.size());
 //    EXPECT_EQ(2, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a regular Directory node
 //    auto maybeDir = vfs.mknode(INode::Type::Directory, owner, FilePermissions{0777}, vfs.rootId(), "dir");
 //    EXPECT_TRUE(maybeDir.isOk());
-//    EXPECT_EQ(4, vfs.size());
+//    EXPECT_EQ(4U, vfs.size());
 //    EXPECT_EQ(3, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a regular Data node in a directory
 //    auto maybeDataInDir = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, *maybeDir, "data");
 //    EXPECT_TRUE(maybeDataInDir.isOk());
-//    EXPECT_EQ(5, vfs.size());
+//    EXPECT_EQ(5U, vfs.size());
 //    EXPECT_EQ(3, *vfs.countEntries(User{0,0}, vfs.rootId()));
 
     // Make a Synth node in a directory
@@ -388,7 +416,7 @@ TEST_F(MockFsTest, makingMockNodes) {
 //                                        []() { return ByteReader{}; },
 //                                        []() { return ByteWriter{}; });
 //    EXPECT_TRUE(maybeSynthInDir.isOk());
-//    EXPECT_EQ(6, vfs.size());
+//    EXPECT_EQ(6U, vfs.size());
 
 
 //    EXPECT_TRUE(vfs.findEntry(vfs.rootId(), "id").isSome());
@@ -428,11 +456,11 @@ TEST_F(MockFsTest, enumeratingNonDirectoryFails) {
 TEST(TestVfs, testDataNodesRelocatable) {
     auto owner = User{0,0};
     auto vfs = Vfs{owner, FilePermissions{0666}};
-//    ASSERT_EQ(1, vfs.size());
+//    ASSERT_EQ(1U, vfs.size());
 
     auto maybeId = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "data0");
     ASSERT_TRUE(maybeId.isOk());
-//    ASSERT_EQ(2, vfs.size());
+//    ASSERT_EQ(2U, vfs.size());
 
     {
         auto maybeNode = vfs.nodeById(*maybeId);
@@ -448,7 +476,7 @@ TEST(TestVfs, testDataNodesRelocatable) {
 
     auto maybeId2 = vfs.mknode(INode::Type::Data, owner, FilePermissions{0777}, vfs.rootId(), "data1");
     ASSERT_TRUE(maybeId2.isOk());
-//    ASSERT_EQ(3, vfs.size());
+//    ASSERT_EQ(3U, vfs.size());
 
     {
         auto maybeNode = vfs.nodeById(*maybeId2);
@@ -506,7 +534,7 @@ TEST_F(MockFsTest, testWalk) {
     ASSERT_TRUE(maybeData0Id1.isOk());
     ASSERT_TRUE(maybeData1Id0.isOk());
     ASSERT_TRUE(maybeData1Id1.isOk());
-	ASSERT_EQ(8, vfs.size());
+	ASSERT_EQ(8U, vfs.size());
 
     int count = 0;
 	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0"), [&count](auto const&) { count += 1; }));
@@ -601,5 +629,34 @@ TEST_F(MockFsTest, stringFs) {
 
 	destBuffer[31] = 0;
 	EXPECT_STREQ("hello", destBuffer);
+}
+
+
+TEST_F(MockFsTest, movingOpenFilesOk) {
+	auto maybeNodeId = vfs.mknode(vfs.rootId(), "str1", fsId, MockFs::dataType(), owner);
+	ASSERT_TRUE(maybeNodeId);
+
+	{
+		EXPECT_EQ(_mockFs->filesOpen(), 0U);
+		std::vector<File> openFiles;
+
+		auto const nodeId = *maybeNodeId;
+		{
+			auto maybeFile = vfs.open(owner, nodeId, Permissions::READ);
+			ASSERT_TRUE(maybeFile.isOk());
+			EXPECT_EQ(_mockFs->filesOpen(), 1U);
+			EXPECT_EQ(_mockFs->filesClosed(), 0U);
+
+			openFiles.emplace_back(maybeFile.moveResult());
+			EXPECT_EQ(_mockFs->filesOpen(), 1U);
+			EXPECT_EQ(_mockFs->filesClosed(), 0U);
+		}
+
+		EXPECT_EQ(_mockFs->filesOpen(), 1U);
+		EXPECT_EQ(_mockFs->filesClosed(), 0U);
+	}
+
+	EXPECT_EQ(_mockFs->filesOpen(), 1U);
+	EXPECT_EQ(_mockFs->filesClosed(), 1U);
 }
 

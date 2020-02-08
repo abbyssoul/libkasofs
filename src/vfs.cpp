@@ -365,7 +365,8 @@ Vfs::open(User user, INode::Id fid, Permissions op) {
 		return maybeOpenedFiledId.moveError();
 	}
 
-	return File{this, fid, vnode, *maybeOpenedFiledId};
+	return kasofs::Result<File>{types::okTag, in_place, this, fid, *maybeOpenedFiledId};
+//	return File{this, fid, *maybeOpenedFiledId};
 }
 
 
