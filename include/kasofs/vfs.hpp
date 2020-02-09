@@ -44,12 +44,49 @@ struct Entry {
 };
 
 
-struct EntriesIterator {
-    Entry const* begin() const  { return _begin; }
-    Entry const* end() const    { return _end; }
+struct EntriesEnumerator {
+	using Entries = std::unordered_map<std::string, INode::Id>;
+	using Iter = Entries::const_iterator;
 
-    Entry const* _begin;
-    Entry const* _end;
+	struct Iterator {
+
+		bool operator!= (Iterator const& other) const noexcept {
+			return (_position != other._position);
+		}
+
+		bool operator== (Iterator const& other) const noexcept {
+			return (_position == other._position);
+		}
+
+		Iterator& operator++ () {
+			++_position;
+			return *this;
+		}
+
+		Entry operator* () const {
+			return operator ->();
+		}
+
+		Entry operator-> () const {
+			return Entry{Solace::StringView(_position->first.data(), _position->first.size()), _position->second};
+		}
+
+		Iter _position;
+		Iter _end;
+	};
+
+
+	EntriesEnumerator(Iter b, Iter e) noexcept
+		: _begin{Solace::mv(b)}
+		, _end{Solace::mv(e)}
+	{}
+
+	auto begin() const noexcept  { return Iterator{_begin, _end}; }
+	auto end() const noexcept    { return Iterator{_end, _end}; }
+
+private:
+	Iter _begin;
+	Iter _end;
 };
 
 
@@ -315,7 +352,7 @@ public:
 	createDirectory(INode::Id where, Solace::StringView name, User user, FilePermissions perms = {0666});
 
     /// Return iterator for directory's entries of the give dirNode
-	Result<EntriesIterator>
+	Result<EntriesEnumerator>
 	enumerateDirectory(INode::Id dirId, User user) const;
 
 	/**
