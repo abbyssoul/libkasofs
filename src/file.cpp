@@ -23,128 +23,93 @@ using namespace Solace;
 
 File::~File() {
 	if (_vfs) {
-		_vfs->nodeById(_nodeId)
-				.map([this](INode& node) {
-					return _vfs->findFs(node.fsTypeId)
-							.flatMap([this, &node](Filesystem* fs) -> Optional<Unit> {
-								fs->close(_fid, node);
-								_vfs->updateNode(_nodeId, node);
-								return none;
-							});
-				});
+		_vfs->findFs(_cachedNode.fsTypeId)
+				.flatMap([this](Filesystem* fs) -> Optional<Unit> {
+					fs->close(_fid, _cachedNode);
+					_vfs->updateNode(_nodeId, _cachedNode);
+					return none;
+				 });
+	}
+}
 
+void File::flush() {
+	if (_vfs) {
+		_vfs->updateNode(_nodeId, _cachedNode);
 	}
 }
 
 
 kasofs::Result<INode>
 File::stat() const noexcept {
-	auto maybeNode = _vfs->nodeById(_nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::IO, "File::stat");
-	}
-
-	return kasofs::Result<INode>{types::okTag, maybeNode.move()};
+	return kasofs::Result<INode>{types::okTag, _cachedNode};
 }
 
 
 kasofs::Result<File::size_type>
 File::read(MutableMemoryView dest) {
-	auto maybeNode = _vfs->nodeById(_nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::IO, "File::read");
-	}
+	if (!_vfs)
+		return makeError(GenericError::NODEV, "File::read");
 
-	auto& inode = *maybeNode;
-	auto maybeFs = _vfs->findFs(inode.fsTypeId);
+	auto maybeFs = _vfs->findFs(_cachedNode.fsTypeId);
 	if (!maybeFs) {
 		return makeError(GenericError::NXIO, "File::read");
 	}
 
-	auto readResult = (*maybeFs)->read(_fid, inode, _readOffset, dest);
-	if (!readResult) {
-		return readResult.moveError();
-	}
+	return (*maybeFs)->read(_fid, _cachedNode, _readOffset, dest)
+			.then([this](File::size_type byteTransferred) {
+				_vfs->updateNode(_nodeId, _cachedNode);
+				_readOffset += byteTransferred;
 
-	_readOffset += *readResult;
-
-	return readResult;
+				return byteTransferred;
+			});
 }
 
 
 kasofs::Result<File::size_type>
 File::write(MemoryView src) {
-	auto maybeNode = _vfs->nodeById(_nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::IO, "File::read");
-	}
+	if (!_vfs)
+		return makeError(GenericError::NODEV, "File::write");
 
-	auto& inode = *maybeNode;
-	auto maybeFs = _vfs->findFs(inode.fsTypeId);
+	auto maybeFs = _vfs->findFs(_cachedNode.fsTypeId);
 	if (!maybeFs) {
 		return makeError(GenericError::NXIO, "File::write");
 	}
 
-	auto writeResult = (*maybeFs)->write(_fid, inode, _writeOffset, src);
-	if (!writeResult) {
-		return writeResult.moveError();
-	}
+	return (*maybeFs)->write(_fid, _cachedNode, _writeOffset, src)
+			.then([this](File::size_type byteTransferred) {
+				_vfs->updateNode(_nodeId, _cachedNode);
+				_writeOffset += byteTransferred;
 
-	_writeOffset += writeResult.unwrap();
-
-	_vfs->updateNode(_nodeId, inode);
-
-	return writeResult;
+				return byteTransferred;
+			});
 }
 
 
 kasofs::Result<File::size_type>
 File::seekRead(size_type offset, Filesystem::SeekDirection direction) {
-	auto maybeNode = _vfs->nodeById(_nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::IO, "File::read");
-	}
-
-	auto& inode = *maybeNode;
-	auto maybeFs = _vfs->findFs(inode.fsTypeId);
+	auto maybeFs = _vfs->findFs(_cachedNode.fsTypeId);
 	if (!maybeFs) {
 		return makeError(GenericError::NXIO, "File::seekWrite");
 	}
 
-	auto seekResult = (*maybeFs)->seek(_fid, inode, offset, direction);
-	if (!seekResult) {
-		return seekResult.moveError();
-	}
-
-	_readOffset = *seekResult;
-
-	_vfs->updateNode(_nodeId, inode);
-
-	return Result<size_type>{types::okTag, _readOffset};
+	return (*maybeFs)->seek(_fid, _cachedNode, offset, direction)
+			.then([this](File::size_type pos) {
+				_readOffset = pos;
+				return _readOffset;
+			});
 }
 
 
 kasofs::Result<File::size_type>
 File::seekWrite(size_type offset, Filesystem::SeekDirection direction) {
-	auto maybeNode = _vfs->nodeById(_nodeId);
-	if (!maybeNode) {
-		return makeError(GenericError::IO, "File::read");
-	}
-
-	auto& inode = *maybeNode;
-	auto maybeFs = _vfs->findFs(inode.fsTypeId);
+	auto maybeFs = _vfs->findFs(_cachedNode.fsTypeId);
 	if (!maybeFs) {
 		return makeError(GenericError::NXIO, "File::seekWrite");
 	}
 
-	auto seekResult = (*maybeFs)->seek(_fid, inode, offset, direction);
-	if (!seekResult) {
-		return seekResult.moveError();
-	}
-
-	_writeOffset = *seekResult;
-
-	_vfs->updateNode(_nodeId, inode);
-
-	return Result<size_type>{types::okTag, _writeOffset};
+	return (*maybeFs)->seek(_fid, _cachedNode, offset, direction)
+			.then([this](File::size_type pos) {
+				_writeOffset = pos;
+				return _writeOffset;
+			});
 }

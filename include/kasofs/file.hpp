@@ -27,16 +27,18 @@ struct File {
 
 	~File();
 
-	constexpr File(struct Vfs* fs, INode::Id nodeId, Filesystem::OpenFID openId) noexcept
+	constexpr File(struct Vfs* fs, INode::Id nodeId, INode node, Filesystem::OpenFID openId) noexcept
 		: _vfs{fs}
 		, _fid{openId}
 		, _nodeId{nodeId}
+		, _cachedNode{node}
 	{}
 
 	constexpr File(File&& rhs) noexcept
 		: _vfs{Solace::exchange(rhs._vfs, nullptr)}
 		, _fid{Solace::exchange(rhs._fid, -1)}
-		, _nodeId{Solace::exchange(rhs._nodeId, -1)}
+		, _nodeId{rhs._nodeId}
+		, _cachedNode{rhs._cachedNode}
 	{}
 
 	File& operator= (File&& rhs) noexcept {
@@ -48,6 +50,7 @@ struct File {
 		swap(_vfs, rhs._vfs);
 		swap(_fid, rhs._fid);
 		swap(_nodeId, rhs._nodeId);
+		swap(_cachedNode, rhs._cachedNode);
 
 		swap(_readOffset, rhs._readOffset);
 		swap(_writeOffset, rhs._writeOffset);
@@ -70,6 +73,8 @@ struct File {
 
 	Result<INode> stat() const noexcept;
 
+	void flush();
+
 	Result<INode::size_type> size() const noexcept {
 		return stat().then([](INode const& node) { return node.dataSize; });
 	}
@@ -78,6 +83,7 @@ private:
 	struct Vfs*				_vfs;
 	Filesystem::OpenFID		_fid;
 	INode::Id				_nodeId;
+	INode					_cachedNode;
 
 	size_type				_readOffset{0};
 	size_type				_writeOffset{0};

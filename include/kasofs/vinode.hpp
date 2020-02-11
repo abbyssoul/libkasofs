@@ -27,22 +27,46 @@ using VfsNodeType = Solace::uint32;
  */
 struct INode {
 
-	using Id = Solace::uint32;
-	using VfsData = Solace::uint64;
 	using size_type = Solace::uint64;
+	using VfsData = Solace::uint64;
 
-	VfsId				fsTypeId;			//!< Id of the vfs type of the node
-	VfsNodeType			nodeTypeId;			//!< FS specific type of the node
+//	using Id = Solace::uint32;
+	struct Id {
+		Solace::uint32 index;
+		Solace::uint32 gen;
+
+		constexpr Id(Solace::uint32 i, Solace::uint32 g) noexcept
+			: index{i}
+			, gen{g}
+		{}
+
+		constexpr Id(INode::Id const& rhs) noexcept
+			: index{rhs.index}
+			, gen{rhs.gen}
+		{}
+
+
+		Id& operator= (INode::Id const& rhs) noexcept {
+			index = rhs.index;
+			gen = rhs.gen;
+
+			return *this;
+		}
+	};
+
+
+	VfsId				fsTypeId;			//!< Id of the vfs type of the node.
+	VfsNodeType			nodeTypeId;			//!< FS specific type of the node.
 
     User                owner;              //!< Owner of the node
     FilePermissions     permissions;        //!< Permissions and flags
 
-
     Solace::uint32      atime{0};           //!< last read time
     Solace::uint32      mtime{0};           //!< last write time
 
-	Solace::uint32      version{0};         //!< Version of the node
 	Solace::uint32      nLinks{0};			//!< Number of links to this node from other nodes / direcotries
+
+	Solace::uint32      version{0};         //!< Version of the node
 	VfsData				vfsData{0};			//!< Data storage used by vfs.
 	size_type			dataSize{0};		//!< Size of the data stored by vfs
 
@@ -84,6 +108,11 @@ public:
 
 };
 
+
+inline bool
+operator== (INode::Id const& lhs, INode::Id const& rhs) noexcept {
+	return (lhs.index == rhs.index) && (lhs.gen == rhs.gen);
+}
 
 inline
 void swap(INode& lhs, INode& rhs) noexcept {

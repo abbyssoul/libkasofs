@@ -35,7 +35,7 @@ using Result = Solace::Result<T, Error>;
 struct Filesystem {
 	using size_type = Solace::MemoryView::size_type;
 	using NodeType = VfsNodeType;
-	using OpenFID = INode::Id;
+	using OpenFID = Solace::uint32;
 
 	enum class SeekDirection {
 		FromStart,

@@ -75,18 +75,17 @@ struct EntriesEnumerator {
 		Iter _end;
 	};
 
+	~EntriesEnumerator();
 
-	EntriesEnumerator(Iter b, Iter e) noexcept
-		: _begin{Solace::mv(b)}
-		, _end{Solace::mv(e)}
-	{}
+	EntriesEnumerator(Vfs& vfs, INode::Id dirId, Entries const& entries) noexcept;
 
-	auto begin() const noexcept  { return Iterator{_begin, _end}; }
-	auto end() const noexcept    { return Iterator{_end, _end}; }
+	auto begin() const noexcept  { return Iterator{_entries.begin(), _entries.end()}; }
+	auto end() const noexcept    { return Iterator{_entries.end(), _entries.end()}; }
 
 private:
-	Iter _begin;
-	Iter _end;
+	Vfs&			_vfs;
+	INode::Id		_dirId;
+	Entries const&	_entries;
 };
 
 
@@ -169,7 +168,7 @@ public:
 	/// Index management
 	/////////////////////////////////////////////////////////////
 
-	INode::Id rootId() const noexcept { return 0; }
+	INode::Id rootId() const noexcept { return {0, 0}; }
 
 	/**
 	 * Get number of nodes in this VFS
@@ -193,7 +192,8 @@ public:
 				: Solace::none;
 	}
 
-	void updateNode(INode::Id id, INode inode);
+	Result<void>
+	updateNode(INode::Id id, INode inode);
 
 
     /////////////////////////////////////////////////////////////
@@ -263,9 +263,9 @@ public:
      * @return Result<void> on success or an error.
      *
      * @note User must have write permission to the A node in order to link it to B.
-     * The link created does not change ownership or access permissions of B.
+	 * @note The link created does not change ownership or access permissions of linked-to node.
      *
-     * @note It is not an error to create multiple links to the same node B with different names.
+	 * @note It is NOT an error to create multiple links to the same node B with different names.
      */
 	Result<void>
 	link(User user, Solace::StringView name, INode::Id from, INode::Id to);
@@ -273,12 +273,14 @@ public:
     /**
      * Unlink given name from the given node
      * @param user Credentials of the user performing the operation. Note: User must have write permission to the from node.
+	 * @param from Directory NodeID to remove a link from.
      * @param name Name of the link to remove.
-     * @param from Node a link should be removed from.
      * @return Void or error.
-     */
+	 *
+	 * @note User must have write permission to the node to unlink name from it.
+	 */
 	Result<void>
-	unlink(User user, Solace::StringView name, INode::Id from);
+	unlink(User user, INode::Id from, Solace::StringView name);
 
 
 	template<typename P, typename F>
@@ -353,7 +355,7 @@ public:
 
     /// Return iterator for directory's entries of the give dirNode
 	Result<EntriesEnumerator>
-	enumerateDirectory(INode::Id dirId, User user) const;
+	enumerateDirectory(User user, INode::Id dirId);
 
 	/**
 	 * Open a file for IO operations.
@@ -385,10 +387,29 @@ protected:
 	Result<INode::Id>
 	createUnlinkedNode(VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms, FilePermissions dirPerms);
 
+	void
+	releaseNode(INode::Id id) noexcept;
+
+	void
+	addNodeLink(INode::Id id) noexcept;
+
+	friend struct EntriesEnumerator;
+
 private:
 
+	struct INodeEntry {
+		Solace::uint32		gen;				//!< VFS generation of node.
+		INode				inode;
+
+		constexpr INodeEntry(Solace::uint32 generation, INode node) noexcept
+			: gen{generation}
+			, inode{Solace::mv(node)}
+		{}
+	};
+
     /// Index nodes are vertices of a graph: e.g all addressable nodes
-	std::vector<INode> _index;
+	std::vector<INodeEntry>		_index;
+	Solace::uint32				_genCount{0};				//!< VFS generation of node.
 
     /// Mounted filesystems
 //    std::vector<Mount> mounts;

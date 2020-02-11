@@ -163,7 +163,7 @@ struct MockFsTest : public ::testing::Test {
 
 protected:
 	User	owner{0, 0};
-	Vfs		vfs{owner, FilePermissions{0600}};
+	Vfs		vfs{owner, FilePermissions{0640}};
 	VfsId	fsId{0};
 
 	MockFs*	_mockFs;
@@ -241,22 +241,22 @@ TEST_F(MockFsTest, linkingNodesToDirecotryIsOk) {
 	// There are only 2 nodes in vfs but 3 entries in the root directory pointing to the same node
 	EXPECT_EQ(2U, vfs.size());
 
-	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
+	auto enumerator = vfs.enumerateDirectory(owner, vfs.rootId());
 	ASSERT_TRUE(enumerator.isOk());
 
 	uint32 count = 0;
-	for (auto const& e : *enumerator) {
+	for (auto e : *enumerator) {
 		EXPECT_EQ(*maybeId, e.nodeId);
 		EXPECT_EQ("id", e.name.substring(0, 2));
 		count += 1;
 	}
-	EXPECT_EQ(3, count);
+	EXPECT_EQ(3U, count);
 
 	auto maybeNode = vfs.nodeById(*maybeId);
 	ASSERT_TRUE(maybeNode.isSome());
 
 	// Make sure there are 3 in-bound links to this node
-	EXPECT_EQ(3, (*maybeNode).nLinks);
+	EXPECT_EQ(3U, (*maybeNode).nLinks);
 }
 
 
@@ -280,24 +280,30 @@ TEST_F(MockFsTest, linkingToSelfIsNotOk) {
 }
 
 
-TEST(TestVfs, linkingNonExisingNodesFails) {
-	auto user = User{0, 0};
-    auto vfs = Vfs{user, FilePermissions{0666}};
+TEST_F(MockFsTest, doubleLinkingIsNotOk) {
+	auto maybeId1 = vfs.mknode(vfs.rootId(), "node-1", fsId, MockFs::dataType(), owner);
+	ASSERT_TRUE(maybeId1.isOk());
 
+	EXPECT_TRUE(vfs.link(owner, "link-1", vfs.rootId(), *maybeId1).isOk());
+	EXPECT_TRUE(vfs.link(owner, "link-1", vfs.rootId(), *maybeId1).isError());
+}
+
+
+TEST_F(MockFsTest, linkingNonExisingNodesFails) {
     // Self Linking: exising node to itself
-    EXPECT_TRUE(vfs.link(user, "idx", 0, 0).isError());
+	EXPECT_TRUE(vfs.link(owner, "idx", {0, 0}, {0, 0}).isError());
 
     // Self Linking: non exising node to itself
-    EXPECT_TRUE(vfs.link(user, "id", 747, 747).isError());
+	EXPECT_TRUE(vfs.link(owner, "id", {747, 0}, {747, 0}).isError());
 
     // Linking non-existing node to a different non-existing one
-    EXPECT_TRUE(vfs.link(user, "id", 87, 12).isError());
+	EXPECT_TRUE(vfs.link(owner, "id", {87, 21}, {12, 87}).isError());
 
     // Linking existing node to to a non-exingsting target
-    EXPECT_TRUE(vfs.link(user, "id", 0, 17).isError());
+	EXPECT_TRUE(vfs.link(owner, "id", vfs.rootId(), {17, 321}).isError());
 
     // Linking non-existing node to an existing one
-    EXPECT_TRUE(vfs.link(user, "id", 21, 0).isError());
+	EXPECT_TRUE(vfs.link(owner, "id", {21, 0}, vfs.rootId()).isError());
 }
 
 
@@ -306,19 +312,19 @@ TEST_F(MockFsTest, unlinkingNodeRemovesNodeWithNoRefTo) {
 	ASSERT_TRUE(maybeId.isOk());
 
 	EXPECT_EQ(2U, vfs.size());
-	EXPECT_TRUE(vfs.unlink(owner, "id", vfs.rootId()).isOk());
+	EXPECT_TRUE(vfs.unlink(owner, vfs.rootId(), "id").isOk());
 	EXPECT_EQ(1U, vfs.size());
 
-	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
+	auto enumerator = vfs.enumerateDirectory(owner, vfs.rootId());
 	ASSERT_TRUE(enumerator.isOk());
 
 	uint32 count = 0;
-	for (auto const& e : *enumerator) {
+	for (auto e : *enumerator) {
 		EXPECT_EQ(*maybeId, e.nodeId);
 		EXPECT_EQ("id", e.name.substring(0, 2));
 		count += 1;
 	}
-	EXPECT_EQ(0, count);
+	EXPECT_EQ(0U, count);
 }
 
 
@@ -326,25 +332,103 @@ TEST_F(MockFsTest, unlinkingNonExistingNameIsNoop) {
 	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
 	ASSERT_TRUE(maybeId.isOk());
 
-	EXPECT_TRUE(vfs.unlink(owner, "id-some", vfs.rootId()).isOk());
+	EXPECT_TRUE(vfs.unlink(owner, vfs.rootId(), "id-some").isOk());
 
-	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
+	auto enumerator = vfs.enumerateDirectory(owner, vfs.rootId());
 	ASSERT_TRUE(enumerator.isOk());
 	uint32 count = 0;
-	for (auto const& e : *enumerator) {
+	for (auto e : *enumerator) {
 		EXPECT_EQ(*maybeId, e.nodeId);
 		EXPECT_EQ("id", e.name.substring(0, 2));
 		count += 1;
 	}
-	EXPECT_EQ(1, count);
+	EXPECT_EQ(1U, count);
+}
+
+
+TEST_F(MockFsTest, unlinkingOneOfMultimpleLinksIsOk) {
+	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
+	ASSERT_TRUE(maybeId.isOk());
+
+	auto const nodeId = *maybeId;
+	EXPECT_TRUE(vfs.link(owner, "id-2", vfs.rootId(), nodeId).isOk());
+	EXPECT_TRUE(vfs.link(owner, "id-3", vfs.rootId(), nodeId).isOk());
+
+	EXPECT_EQ(2U, vfs.size());
+	EXPECT_TRUE(vfs.unlink(owner, vfs.rootId(), "id").isOk());
+	EXPECT_EQ(2U, vfs.size());
+
+	auto enumerator = vfs.enumerateDirectory(owner, vfs.rootId());
+	ASSERT_TRUE(enumerator.isOk());
+
+	uint32 count = 0;
+	for (auto e : *enumerator) {
+		EXPECT_EQ(nodeId, e.nodeId);
+		EXPECT_EQ("id-", e.name.substring(0, 3));
+		count += 1;
+	}
+	EXPECT_EQ(2U, count);
 }
 
 
 TEST_F(MockFsTest, unlinkingFromNonExistingNodeFails) {
-	EXPECT_TRUE(vfs.unlink(owner, "id-some", 61253).isError());
+	EXPECT_TRUE(vfs.unlink(owner, {61253, 0}, "id-some").isError());
 }
 
-// TODO(abbyssoul): Unlink directory while enumeratitg it
+
+TEST_F(MockFsTest, unlinkingEnumeratedDirectoryIsOK) {
+	auto maybeDirId = vfs.createDirectory(vfs.rootId(), "dir", owner);
+	ASSERT_TRUE(maybeDirId.isOk());
+
+	auto const dirId = *maybeDirId;
+//	kasofs::Result<INode::Id> maybeId[] = {
+//		vfs.mknode(dirId, "id-0", fsId, MockFs::dataType(), owner),
+//		vfs.mknode(dirId, "id-1", fsId, MockFs::dataType(), owner),
+//		vfs.mknode(dirId, "id-2", fsId, MockFs::dataType(), owner)
+//	};
+
+//	ASSERT_TRUE(maybeId[0].isOk());
+//	ASSERT_TRUE(maybeId[1].isOk());
+//	ASSERT_TRUE(maybeId[2].isOk());
+
+	{
+		auto enumerator = vfs.enumerateDirectory(owner, dirId);
+		ASSERT_TRUE(enumerator.isOk());
+
+		ASSERT_TRUE(vfs.unlink(owner, vfs.rootId(), "dir").isOk());
+
+		uint32 count = 0;
+		for (auto e : *enumerator) {
+			EXPECT_EQ("id-", e.name.substring(0, 3));
+			count += 1;
+		}
+		EXPECT_EQ(0U, count);
+		EXPECT_EQ(2U, vfs.size());
+	}
+
+	EXPECT_EQ(1U, vfs.size());
+}
+
+
+
+TEST_F(MockFsTest, unlinkingNoneEmptyDirectoryIsNotOK) {
+	auto maybeDirId = vfs.createDirectory(vfs.rootId(), "dir", owner);
+	ASSERT_TRUE(maybeDirId.isOk());
+
+	auto const dirId = *maybeDirId;
+	kasofs::Result<INode::Id> maybeId[] = {
+		vfs.mknode(dirId, "id-0", fsId, MockFs::dataType(), owner),
+		vfs.mknode(dirId, "id-1", fsId, MockFs::dataType(), owner),
+		vfs.mknode(dirId, "id-2", fsId, MockFs::dataType(), owner)
+	};
+
+	ASSERT_TRUE(maybeId[0].isOk());
+	ASSERT_TRUE(maybeId[1].isOk());
+	ASSERT_TRUE(maybeId[2].isOk());
+
+	ASSERT_TRUE(vfs.unlink(owner, vfs.rootId(), "dir").isError());
+}
+
 
 TEST_F(MockFsTest, unlinkingOpenFileRemovesNodeFromIndex) {
 	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
@@ -352,8 +436,10 @@ TEST_F(MockFsTest, unlinkingOpenFileRemovesNodeFromIndex) {
 
 	auto maybeOpenedFile = vfs.open(owner, *maybeId, Permissions::WRITE);
 	ASSERT_TRUE(maybeOpenedFile.isOk());
-	EXPECT_TRUE(vfs.unlink(owner, "id", vfs.rootId()).isOk());
-	EXPECT_TRUE(vfs.nodeById(*maybeId).isNone());
+
+	// Test case - unlink file, while it is open, and make sure it is not discoverable
+	EXPECT_TRUE(vfs.unlink(owner, vfs.rootId(), "id").isOk());
+	EXPECT_TRUE(vfs.nodeById(maybeId).isNone());
 
 	char msg[] = "other-message";
 	auto& file = *maybeOpenedFile;
@@ -373,15 +459,15 @@ TEST_F(MockFsTest, linkingOwnsName) {
 
 	EXPECT_EQ(2U, vfs.size());
 
-	auto enumerator = vfs.enumerateDirectory(vfs.rootId(), owner);
+	auto enumerator = vfs.enumerateDirectory(owner, vfs.rootId());
 	ASSERT_TRUE(enumerator.isOk());
 	uint32 count = 0;
-	for (auto const& e : *enumerator) {
+	for (auto e : *enumerator) {
 		EXPECT_EQ(*maybeId, e.nodeId);
 		EXPECT_EQ("name1", e.name);
 		count += 1;
 	}
-	EXPECT_EQ(1, count);
+	EXPECT_EQ(1U, count);
 }
 
 
@@ -434,7 +520,7 @@ TEST_F(MockFsTest, makingMockNodes) {
 
 
 TEST_F(MockFsTest, makingNodeInNonExistingDirFails) {
-	EXPECT_TRUE(vfs.mknode(321, "id", fsId, MockFs::dataType(), owner).isError());
+	EXPECT_TRUE(vfs.mknode({321, 0}, "id", fsId, MockFs::dataType(), owner).isError());
 }
 
 
@@ -448,7 +534,7 @@ TEST_F(MockFsTest, enumeratingNonDirectoryFails) {
 	auto maybeId = vfs.mknode(vfs.rootId(), "id", fsId, MockFs::dataType(), owner);
 	EXPECT_TRUE(maybeId.isOk());
 
-	ASSERT_TRUE(vfs.enumerateDirectory(*maybeId, owner).isError());
+	ASSERT_TRUE(vfs.enumerateDirectory(owner, *maybeId).isError());
 }
 
 
@@ -553,7 +639,7 @@ TEST_F(MockFsTest, testWalk) {
     EXPECT_EQ(2, count);
 
     count = -3;
-	EXPECT_FALSE(vfs.walk(User{9, 0}, vfs.rootId(), *makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
+	EXPECT_FALSE(vfs.walk(User{9, 1}, vfs.rootId(), *makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
     EXPECT_EQ(-3, count);
 }
 
@@ -564,7 +650,7 @@ TEST_F(MockFsTest, testPremissionsInheritence) {
 	ASSERT_TRUE(maybeNode);
 
 	auto const& node = *maybeNode;
-	EXPECT_EQ(0600, node.permissions);
+	EXPECT_EQ(0640, node.permissions);
 }
 
 
@@ -578,8 +664,8 @@ TEST_F(MockFsTest, testFileWriteUpdatesSize) {
         ASSERT_TRUE(maybeNode);
 
 		auto const& node = *maybeNode;
-		EXPECT_EQ(5, node.dataSize);
-		EXPECT_EQ(0600, node.permissions);
+		EXPECT_EQ(5U, node.dataSize);
+		EXPECT_EQ(0640, node.permissions);
     }
 
 	char msg[] = "other-message";
@@ -660,3 +746,32 @@ TEST_F(MockFsTest, movingOpenFilesOk) {
 	EXPECT_EQ(_mockFs->filesClosed(), 1U);
 }
 
+
+
+TEST_F(MockFsTest, creatingDirectoryIsOK) {
+	auto maybeDirId = vfs.createDirectory(vfs.rootId(), "dir", owner);
+	ASSERT_TRUE(maybeDirId.isOk());
+	EXPECT_EQ(2U, vfs.size());
+
+	auto const dirId = *maybeDirId;
+	kasofs::Result<INode::Id> maybeId[] = {
+		vfs.mknode(dirId, "id-0", fsId, MockFs::dataType(), owner),
+		vfs.mknode(dirId, "id-1", fsId, MockFs::dataType(), owner),
+		vfs.mknode(dirId, "id-2", fsId, MockFs::dataType(), owner)
+	};
+
+	ASSERT_TRUE(maybeId[0].isOk());
+	ASSERT_TRUE(maybeId[1].isOk());
+	ASSERT_TRUE(maybeId[2].isOk());
+	EXPECT_EQ(5U, vfs.size());
+
+	auto enumerator = vfs.enumerateDirectory(owner, dirId);
+	ASSERT_TRUE(enumerator.isOk());
+
+	uint32 count = 0;
+	for (auto e : *enumerator) {
+		EXPECT_EQ("id-", e.name.substring(0, 3));
+		count += 1;
+	}
+	EXPECT_EQ(3U, count);
+}
