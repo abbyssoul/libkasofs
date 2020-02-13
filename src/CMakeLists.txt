@@ -3,6 +3,7 @@ set(SOURCE_FILES
     vfs.cpp
     file.cpp
     vinode.cpp
+    directoryDriver.cpp
     )
 
 

@@ -30,7 +30,6 @@ struct INode {
 	using size_type = Solace::uint64;
 	using VfsData = Solace::uint64;
 
-//	using Id = Solace::uint32;
 	struct Id {
 		Solace::uint32 index;
 		Solace::uint32 gen;

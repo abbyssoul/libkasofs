@@ -16,6 +16,7 @@
 
 #include "vinode.hpp"
 #include "fs.hpp"
+#include "directoryDriver.hpp"
 #include "file.hpp"
 
 
@@ -30,63 +31,6 @@
 
 namespace kasofs {
 
-/**
- * Directory entry
- */
-struct Entry {
-	constexpr Entry(Solace::StringView n, INode::Id i) noexcept
-        : name{n}
-        , nodeId{i}
-    {}
-
-    Solace::StringView  name;
-	INode::Id			nodeId;
-};
-
-
-struct EntriesEnumerator {
-	using Entries = std::unordered_map<std::string, INode::Id>;
-	using Iter = Entries::const_iterator;
-
-	struct Iterator {
-
-		bool operator!= (Iterator const& other) const noexcept {
-			return (_position != other._position);
-		}
-
-		bool operator== (Iterator const& other) const noexcept {
-			return (_position == other._position);
-		}
-
-		Iterator& operator++ () {
-			++_position;
-			return *this;
-		}
-
-		Entry operator* () const {
-			return operator ->();
-		}
-
-		Entry operator-> () const {
-			return Entry{Solace::StringView(_position->first.data(), _position->first.size()), _position->second};
-		}
-
-		Iter _position;
-		Iter _end;
-	};
-
-	~EntriesEnumerator();
-
-	EntriesEnumerator(Vfs& vfs, INode::Id dirId, Entries const& entries) noexcept;
-
-	auto begin() const noexcept  { return Iterator{_entries.begin(), _entries.end()}; }
-	auto end() const noexcept    { return Iterator{_entries.end(), _entries.end()}; }
-
-private:
-	Vfs&			_vfs;
-	INode::Id		_dirId;
-	Entries const&	_entries;
-};
 
 
 /**
@@ -133,10 +77,6 @@ private:
 struct Vfs {
 	static Solace::StringLiteral const kThisDir;
 	static Solace::StringLiteral const kParentDir;
-
-	static VfsId const kVfsTypeDirectory;
-	static VfsNodeType const kVfsDirectoryNodeType;
-
 
     using size_type = std::vector<INode>::size_type;
 
@@ -409,6 +349,8 @@ private:
 
     /// Index nodes are vertices of a graph: e.g all addressable nodes
 	std::vector<INodeEntry>		_index;
+	DirFs						_directories;
+
 	Solace::uint32				_genCount{0};				//!< VFS generation of node.
 
     /// Mounted filesystems
@@ -418,12 +360,6 @@ private:
 	VfsId _nextId{0};
 	std::unordered_map<VfsId, std::unique_ptr<Filesystem>> _vfs;
 };
-
-
-constexpr
-bool isDirectory(INode const& vnode) noexcept {
-	return (vnode.fsTypeId == Vfs::kVfsTypeDirectory && vnode.nodeTypeId == Vfs::kVfsDirectoryNodeType);
-}
 
 
 }  // namespace kasofs

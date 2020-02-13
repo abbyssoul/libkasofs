@@ -274,6 +274,16 @@ TEST_F(MockFsTest, linkingNodesToNodesIsNotOk) {
 	EXPECT_TRUE(vfs.link(owner, "id-other", *maybeId1, *maybeId1).isError());
 }
 
+TEST_F(MockFsTest, linkingRequiresWritePermissions) {
+	auto maybeDirId = vfs.createDirectory(vfs.rootId(), "dir", owner, 0600);
+	ASSERT_TRUE(maybeDirId.isOk());
+
+	auto maybeId1 = vfs.mknode(vfs.rootId(), "node-1", fsId, MockFs::dataType(), owner);
+	ASSERT_TRUE(maybeId1.isOk());
+	ASSERT_EQ(3U, vfs.size());
+
+	EXPECT_TRUE(vfs.link(User{1, 2}, "something-else", *maybeDirId, *maybeId1).isError());
+}
 
 TEST_F(MockFsTest, linkingToSelfIsNotOk) {
 	EXPECT_TRUE(vfs.link(owner, "something-else", vfs.rootId(), vfs.rootId()).isError());
@@ -376,21 +386,11 @@ TEST_F(MockFsTest, unlinkingFromNonExistingNodeFails) {
 }
 
 
-TEST_F(MockFsTest, unlinkingEnumeratedDirectoryIsOK) {
+TEST_F(MockFsTest, unlinkingEmptyEnumeratedDirectoryIsOK) {
 	auto maybeDirId = vfs.createDirectory(vfs.rootId(), "dir", owner);
 	ASSERT_TRUE(maybeDirId.isOk());
 
 	auto const dirId = *maybeDirId;
-//	kasofs::Result<INode::Id> maybeId[] = {
-//		vfs.mknode(dirId, "id-0", fsId, MockFs::dataType(), owner),
-//		vfs.mknode(dirId, "id-1", fsId, MockFs::dataType(), owner),
-//		vfs.mknode(dirId, "id-2", fsId, MockFs::dataType(), owner)
-//	};
-
-//	ASSERT_TRUE(maybeId[0].isOk());
-//	ASSERT_TRUE(maybeId[1].isOk());
-//	ASSERT_TRUE(maybeId[2].isOk());
-
 	{
 		auto enumerator = vfs.enumerateDirectory(owner, dirId);
 		ASSERT_TRUE(enumerator.isOk());

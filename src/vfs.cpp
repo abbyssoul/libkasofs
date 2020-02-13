@@ -11,9 +11,6 @@
 #include <solace/posixErrorDomain.hpp>
 
 
-#include <functional>
-
-
 using namespace kasofs;
 using namespace Solace;
 
@@ -22,197 +19,8 @@ StringLiteral const Vfs::kThisDir{"."};
 StringLiteral const Vfs::kParentDir("..");
 
 
-VfsId const Vfs::kVfsTypeDirectory{0};
-VfsNodeType const Vfs::kVfsDirectoryNodeType{0};
-
 
 Filesystem::~Filesystem() = default;
-
-bool operator== (std::string s, StringView sview) noexcept {
-	return sview.equals(StringView(s.data(), s.size()));
-}
-
-StringView as_string_view(std::string const& str) noexcept {
-	return StringView(str.data(), str.size());
-}
-
-
-struct DirFs : public Filesystem {
-
-//	using Entries = std::vector<Entry>;
-	using Entries = std::unordered_map<std::string, INode::Id>;
-
-	kasofs::Result<INode>
-	createNode(NodeType type, User owner, FilePermissions perms) override {
-		if (Vfs::kVfsDirectoryNodeType != type) {
-			return makeError(GenericError::NOTDIR, "DirFs::createNode");
-		}
-
-		INode node{type, owner, perms};
-		node.dataSize = 4096;
-		node.vfsData = nextId();
-		auto emplacement = _adjacencyList.try_emplace(node.vfsData, Entries{});
-		if (!emplacement.second) {
-			return makeError(GenericError::NFILE, "DirFs::createNode");
-		}
-
-		return kasofs::Result<INode>{types::okTag, in_place, mv(node)};
-	}
-
-	kasofs::Result<void>
-	destroyNode(INode& node) override {
-		if (!nodeIsDirectory(node)) {
-			return makeError(GenericError::NOTDIR, "DirFs::destroyNode");
-		}
-
-		_adjacencyList.erase(node.vfsData);
-		return Ok();
-	}
-
-
-	FilePermissions defaultFilePermissions(NodeType) const noexcept override {
-		return FilePermissions{0666};
-	}
-
-	auto open(INode&, Permissions op) -> kasofs::Result<OpenFID> override {
-		if (op.can(Permissions::READ) || op.can(Permissions::WRITE))
-			return Ok<OpenFID>(0);
-
-		return makeError(GenericError::PERM, "DirFS::open");
-	}
-
-	auto read(OpenFID, INode&, size_type, MutableMemoryView) -> kasofs::Result<size_type> override {
-		return makeError(GenericError::ISDIR, "DirFs::write");
-	}
-
-	auto write(OpenFID, INode&, size_type, MemoryView) -> kasofs::Result<size_type> override {
-		return makeError(GenericError::ISDIR, "DirFs::write");
-	}
-
-	auto seek(OpenFID, INode&, size_type, SeekDirection) -> kasofs::Result<size_type> override {
-		return makeError(GenericError::ISDIR, "DirFs::seek");
-	}
-
-	auto close(OpenFID, INode&) -> kasofs::Result<void> override {
-		return Ok();
-	}
-
-	kasofs::Result<void>
-	addEntry(INode const& dirNode, Entry entry) {
-		if (!nodeIsDirectory(dirNode)) {
-			return makeError(GenericError::NOTDIR , "DirFs::addEntry");
-		}
-
-		auto const id = dirNode.vfsData;
-		auto it = _adjacencyList.find(id);
-		if (it == _adjacencyList.end())
-			return makeError(GenericError::NOENT, "DirFs::addEntry");
-
-		auto maybeEmplaced = it->second.try_emplace(std::string{entry.name.data(), entry.name.size()}, entry.nodeId);
-		if (maybeEmplaced.second == false) {
-			return makeError(GenericError::EXIST, "DirFS::addEntry");
-		}
-
-		return Ok();
-	}
-
-
-	kasofs::Result<Optional<INode::Id>>
-	removeEntry(INode& dirNode, StringView name) {
-		if (!nodeIsDirectory(dirNode)) {
-			return makeError(GenericError::NOTDIR, "DirFs::removeEntry");
-		}
-
-		auto const id = dirNode.vfsData;
-		auto it = _adjacencyList.find(id);
-		if (it == _adjacencyList.end())
-			return makeError(GenericError::NOENT, "DirFs::removeEntry");
-
-		Optional<INode::Id> removedId;
-		auto& entries = it->second;
-		auto tmp = std::string{name.data(), name.size()};
-		auto entry = entries.find(tmp);
-		if (entry != entries.end()) {
-			removedId = entry->second;
-			entries.erase(entry);
-		}
-
-//		enties.erase(std::remove_if(enties.begin(), enties.end(), [name, &removedId](Entries::value_type const& entry) {
-//														if (entry.first == name) {
-//															removedId = entry.second;
-//															return true;
-//														}
-//														return false;
-//													}),
-//				enties.end());
-
-		return removedId;
-	}
-
-
-	Optional<Entry>
-	lookup(INode const& dirNode, StringView name) const {
-		if (!nodeIsDirectory(dirNode)) {
-			return none;
-		}
-
-		auto const id = dirNode.vfsData;
-		auto it = _adjacencyList.find(id);
-		if (it == _adjacencyList.end())
-			return none;
-
-		auto const& entries = it->second;
-//		auto entryIt = enties.find(name)
-		auto entryIt = std::find_if(entries.begin(), entries.end(), [name](Entries::value_type const& e) { return e.first == name; });
-
-		return (entryIt == entries.end())
-				? none
-				: Optional<Entry>{in_place, as_string_view(entryIt->first), entryIt->second};
-	}
-
-	size_type
-	countEntries(INode const& dirNode) const {
-		if (!nodeIsDirectory(dirNode)) {
-			return 0;
-		}
-
-		auto const id = dirNode.vfsData;
-		auto it = _adjacencyList.find(id);
-		return (it != _adjacencyList.end())
-				? it->second.size()
-				: 0;
-	}
-
-
-	kasofs::Result<EntriesEnumerator>
-	enumerateEntries(Vfs& vfs, INode::Id dirNodeId, INode const& dirNode) const {
-		if (!nodeIsDirectory(dirNode)) {
-			return makeError(GenericError::NOTDIR, "DirFs::enumerateEntries");
-		}
-
-		auto const id = dirNode.vfsData;
-		auto it = _adjacencyList.find(id);
-		if (it == _adjacencyList.end())
-			return makeError(GenericError::NOENT, "DirFs::enumerateEntries");
-
-		auto& entries = it->second;
-		return kasofs::Result<EntriesEnumerator>{types::okTag, in_place, vfs, dirNodeId, entries};
-	}
-
-
-	static bool nodeIsDirectory(INode const& node) noexcept {
-		return (node.nodeTypeId == Vfs::kVfsDirectoryNodeType);
-	}
-
-private:
-	using DataId = INode::VfsData;
-	DataId nextId() noexcept { return _idBase++; }
-
-	DataId _idBase{0};
-
-	/// Directory entries - Named Graph edges
-	std::unordered_map<DataId, Entries> _adjacencyList;
-};
 
 
 EntriesEnumerator::~EntriesEnumerator() {
@@ -229,24 +37,22 @@ EntriesEnumerator::EntriesEnumerator(Vfs& vfs, INode::Id dirId, Entries const& e
 }
 
 
+
+
 Vfs::Vfs(User owner, FilePermissions rootPerms)
 	: _index{}
 	, _vfs{}
 {
-	_vfs.emplace(kVfsTypeDirectory, std::make_unique<DirFs>());
+	_vfs.emplace(DirFs::kTypeId, std::make_unique<DirFs>());
 	_nextId = 1;
 
-	createUnlinkedNode(kVfsTypeDirectory, kVfsDirectoryNodeType, owner, rootPerms, FilePermissions{0666})
+	createUnlinkedNode(DirFs::kTypeId, DirFs::kNodeType, owner, rootPerms, FilePermissions{0666})
 			.then([this](INode::Id rootId) {addNodeLink(rootId); });
 }
 
 
 kasofs::Result<void>
 Vfs::unregisterFileSystem(VfsId fsId) {
-	if (fsId == kVfsTypeDirectory) {
-		return makeError(GenericError::BADF, "unregisterFileSystem");
-	}
-
 	// FIXME: Check if fs is busy / in use
 	auto nRemoved = _vfs.erase(fsId);
 	if (!nRemoved) {
@@ -326,8 +132,7 @@ Vfs::link(User user, StringView linkName, INode::Id from, INode::Id to) {
 
     // Add new entry:
 	Entry entry{linkName, to};
-	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	auto result = dirFs->addEntry(dirNode, entry);
+	auto result = _directories.addEntry(dirNode, entry);
 	if (result) {  // TODO(abbyssoul): this is a race condition as node could have been changed
 		addNodeLink(to);  // (*maybeTargetNode).nLinks += 1;
 	}
@@ -352,8 +157,7 @@ Vfs::unlink(User user, INode::Id fromDir, StringView name) {
 		return makeError(GenericError::PERM, "unlink");
     }
 
-	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	auto maybeEntry = dirFs->lookup(dirNode, name);
+	auto maybeEntry = _directories.lookup(dirNode, name);
 	if (!maybeEntry)  // No entry - no-op.
 		return Ok();
 
@@ -361,12 +165,12 @@ Vfs::unlink(User user, INode::Id fromDir, StringView name) {
 	auto maybeTargetNode = nodeById(entry.nodeId);
 	if (maybeTargetNode) {
 		auto& targetNode = *maybeTargetNode;
-		if (isDirectory(targetNode) && dirFs->countEntries(targetNode) > 0) {
+		if (isDirectory(targetNode) && _directories.countEntries(targetNode) > 0) {
 			return makeError(SystemErrors::NOTEMPTY, "unlink");
 		}
 	}
 
-	auto maybeUnlinked = dirFs->removeEntry(dirNode, name);
+	auto maybeUnlinked = _directories.removeEntry(dirNode, name);
 	if (!maybeUnlinked) {
 		return maybeUnlinked.moveError();
 	}
@@ -392,8 +196,7 @@ Vfs::lookup(INode::Id dirNodeId, StringView name) const {
         return none;
     }
 
-	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	return dirFs->lookup(dirNode, name);
+	return _directories.lookup(dirNode, name);
 }
 
 
@@ -473,9 +276,8 @@ Vfs::enumerateDirectory(User user, INode::Id dirNodeId) {
 		return makeError(GenericError::PERM, "enumerateDirectory");
     }
 
-	// lookup named entry:
-	auto dirFs = static_cast<DirFs*>(*findFs(kVfsTypeDirectory));
-	return dirFs->enumerateEntries(*this, dirNodeId, dirNode);
+	// Enumerate content of a directory node
+	return _directories.enumerateEntries(*this, dirNodeId, dirNode);
 }
 
 
@@ -491,7 +293,7 @@ Vfs::findFs(VfsId id) const {
 
 kasofs::Result<INode::Id>
 Vfs::createDirectory(INode::Id where, StringView name, User user, FilePermissions perms) {
-	return mknode(where, name, kVfsTypeDirectory, kVfsDirectoryNodeType, user, perms);
+	return mknode(where, name, DirFs::kTypeId, DirFs::kNodeType, user, perms);
 }
 
 
@@ -528,7 +330,10 @@ Vfs::mknode(INode::Id where, StringView name, VfsId type, VfsNodeType nodeType, 
 
 kasofs::Result<INode::Id>
 Vfs::createUnlinkedNode(VfsId type, VfsNodeType nodeType, User owner, FilePermissions perms, FilePermissions baseP) {
-	auto maybeVfs = findFs(type);
+	auto maybeVfs = type == DirFs::kTypeId
+			? Optional<Filesystem*>{&_directories}
+			: findFs(type);
+
 	if (!maybeVfs) {  // Unsupported VFS specified
 		return makeError(SystemErrors::PROTONOSUPPORT, "mknode");
 	}
