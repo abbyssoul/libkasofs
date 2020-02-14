@@ -4,6 +4,8 @@ set(SOURCE_FILES
     file.cpp
     vinode.cpp
     directoryDriver.cpp
+
+    extras/ramfsDriver.cpp
     )
 
 

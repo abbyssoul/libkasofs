@@ -64,7 +64,11 @@ DirFs::destroyNode(INode& node) {
 
 
 kasofs::Result<Filesystem::OpenFID>
-DirFs::open(INode&, Permissions op) {
+DirFs::open(INode& dirNode, Permissions op) {
+	if (!isDirectoryNode(dirNode)) {
+		return makeError(GenericError::NOTDIR, "DirFs::open");
+	}
+
 	if (op.can(Permissions::READ) || op.can(Permissions::WRITE))
 		return Ok<OpenFID>(0);
 
@@ -73,25 +77,41 @@ DirFs::open(INode&, Permissions op) {
 
 
 kasofs::Result<DirFs::size_type>
-DirFs::read(OpenFID, INode&, size_type, MutableMemoryView) {
+DirFs::read(OpenFID, INode& dirNode, size_type, MutableMemoryView) {
+	if (!isDirectoryNode(dirNode)) {
+		return makeError(GenericError::NOTDIR, "DirFs::read");
+	}
+
+	return makeError(GenericError::ISDIR, "DirFs::read");
+}
+
+
+kasofs::Result<DirFs::size_type>
+DirFs::write(OpenFID, INode& dirNode, size_type, MemoryView) {
+	if (!isDirectoryNode(dirNode)) {
+		return makeError(GenericError::NOTDIR, "DirFs::write");
+	}
+
 	return makeError(GenericError::ISDIR, "DirFs::write");
 }
 
 
 kasofs::Result<DirFs::size_type>
-DirFs::write(OpenFID, INode&, size_type, MemoryView) {
-	return makeError(GenericError::ISDIR, "DirFs::write");
-}
+DirFs::seek(OpenFID, INode& dirNode, size_type, SeekDirection) {
+	if (!isDirectoryNode(dirNode)) {
+		return makeError(GenericError::NOTDIR, "DirFs::seek");
+	}
 
-
-kasofs::Result<DirFs::size_type>
-DirFs::seek(OpenFID, INode&, size_type, SeekDirection) {
 	return makeError(GenericError::ISDIR, "DirFs::seek");
 }
 
 
 kasofs::Result<void>
-DirFs::close(OpenFID, INode&) {
+DirFs::close(OpenFID, INode& dirNode) {
+	if (!isDirectoryNode(dirNode)) {
+		return makeError(GenericError::NOTDIR, "DirFs::close");
+	}
+
 	return Ok();
 }
 

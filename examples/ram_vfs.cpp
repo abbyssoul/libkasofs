@@ -1,5 +1,5 @@
 /*
-*  Copyright 2018 Ivan Ryabov
+*  Copyright 2020 Ivan Ryabov
 *
 *  Licensed under the Apache License, Version 2.0 (the "License");
 *  you may not use this file except in compliance with the License.
@@ -19,10 +19,13 @@
 */
 
 #include <kasofs/kasofs.hpp>
+#include <kasofs/extras/ramfsDriver.hpp>
 
 #include <solace/output_utils.hpp>
 
 #include <iostream>
+#include <unistd.h>
+#include <sys/types.h>
 
 
 using namespace kasofs;
@@ -33,8 +36,27 @@ static constexpr StringLiteral      kAppName = "ram_vfs";
 static const Version                kAppVersion = Version(0, 0, 1, "dev");
 
 
+namespace /*anonymous*/ {
+
+kasofs::User
+getSystemUser() noexcept {
+	return {getuid(), getgid()};
+}
+
+}  // anonymous namespace
+
+
 int main(int argc, const char **argv) {
-    std::cout << "Hello" << std::endl;
+	// Get current proc user.
+	auto currentUser = getSystemUser();
+	// Create VFS
+	auto vfs = kasofs::Vfs{currentUser, kasofs::FilePermissions{0777}};
+	// Register RamVFS driver
+	auto maybeRamFsDriverId = vfs.registerFilesystem<RamFS>(4096);
+	if (!maybeRamFsDriverId) {
+		std::cerr << "Failed to register RAM fs driver: " << maybeRamFsDriverId.getError() << '\n';
+		return EXIT_FAILURE;
+	}
 
     return EXIT_SUCCESS;
 }
