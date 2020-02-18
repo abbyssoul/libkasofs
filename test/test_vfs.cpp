@@ -604,7 +604,7 @@ TEST(TestVfs, testDataNodesRelocatable) {
 
 TEST_F(MockFsTest, testWalkEmptyDir) {
 	int count = 0;
-	Entry resultEntry{"", {0,0}};
+	Entry resultEntry{"", {0, 0}};
 	INode resultNode = *vfs.nodeById(vfs.rootId());
 
 	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), Path{},
@@ -617,7 +617,7 @@ TEST_F(MockFsTest, testWalkEmptyDir) {
 
 TEST_F(MockFsTest, testWalkNonExistentEntry) {
 	int count = 0;
-	Entry resultEntry{"", {0,0}};
+	Entry resultEntry{"", {0, 0}};
 	INode resultNode = *vfs.nodeById(vfs.rootId());
 
 	EXPECT_FALSE(vfs.walk(owner, vfs.rootId(), *makePath("dir0"),
