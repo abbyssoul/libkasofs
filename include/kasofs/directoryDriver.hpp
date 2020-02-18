@@ -123,14 +123,13 @@ struct DirFs final : public Filesystem {
 	removeEntry(INode& dirNode, Solace::StringView name);
 
 	Solace::Optional<Entry>
-	lookup(INode const& dirNode, Solace::StringView name) const;
+	lookup(INode const& dirNode, Solace::StringView name) const noexcept;
 
 	size_type
-	countEntries(INode const& dirNode) const;
+	countEntries(INode const& dirNode) const noexcept;
 
 	Result<EntriesEnumerator>
-	enumerateEntries(Vfs& vfs, INode::Id dirNodeId, INode const& dirNode) const;
-
+	enumerateEntries(Vfs& vfs, INode::Id dirNodeId, INode const& dirNode) const noexcept;
 
 	static bool isDirectoryNode(INode const& node) noexcept {
 		return (kNodeType == node.nodeTypeId);
@@ -150,7 +149,7 @@ private:
 
 inline constexpr
 bool isDirectory(INode const& vnode) noexcept {
-	return ((vnode.fsTypeId == DirFs::kTypeId) && (vnode.nodeTypeId == DirFs::kNodeType));
+	return ((vnode.fsTypeId == DirFs::kTypeId) && DirFs::isDirectoryNode(vnode));
 }
 
 

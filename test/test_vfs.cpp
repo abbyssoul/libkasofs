@@ -602,6 +602,31 @@ TEST(TestVfs, testDataNodesRelocatable) {
 }
 */
 
+TEST_F(MockFsTest, testWalkEmptyDir) {
+	int count = 0;
+	Entry resultEntry{"", {0,0}};
+	INode resultNode = *vfs.nodeById(vfs.rootId());
+
+	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), Path{},
+						 [&](Entry e, INode node) { resultEntry = e; resultNode = node; count += 1; }));
+	EXPECT_EQ(0, count);
+	EXPECT_EQ(vfs.rootId(), resultEntry.nodeId);
+	EXPECT_EQ("", resultEntry.name);
+}
+
+
+TEST_F(MockFsTest, testWalkNonExistentEntry) {
+	int count = 0;
+	Entry resultEntry{"", {0,0}};
+	INode resultNode = *vfs.nodeById(vfs.rootId());
+
+	EXPECT_FALSE(vfs.walk(owner, vfs.rootId(), *makePath("dir0"),
+						 [&](Entry e, INode node) { resultEntry = e; resultNode = node; count += 1; }));
+	EXPECT_EQ(0, count);
+	EXPECT_EQ(vfs.rootId(), resultEntry.nodeId);
+	EXPECT_EQ("", resultEntry.name);
+}
+
 TEST_F(MockFsTest, testWalk) {
 	auto maybeDirId0 = vfs.createDirectory(vfs.rootId(), "dir0", owner, FilePermissions{0777});
 	auto maybeDirId1 = vfs.createDirectory(vfs.rootId(), "dir1", owner, FilePermissions{0700});
@@ -622,25 +647,68 @@ TEST_F(MockFsTest, testWalk) {
     ASSERT_TRUE(maybeData1Id1.isOk());
 	ASSERT_EQ(8U, vfs.size());
 
-    int count = 0;
-	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0"), [&count](auto const&) { count += 1; }));
-    EXPECT_EQ(1, count);
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = 0;
+		EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0"),
+							 [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(1, count);
+		EXPECT_EQ(*maybeDirId0, resultEntry.nodeId);
+	}
 
-    count = 0;
-	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0", "data0"), [&count](auto const&) { count += 1; }));
-    EXPECT_EQ(2, count);
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = 0;
+		EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0", "data0"),
+							 [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(2, count);
+		EXPECT_EQ(*maybeData0Id0, resultEntry.nodeId);
+	}
 
-    count = 0;
-	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0", "dir0"), [&count](auto const&) { count += 1; }));
-    EXPECT_EQ(2, count);
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = 0;
+		EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir0", "dir0"),
+							 [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(2, count);
+		EXPECT_EQ(*maybeDir0Id1, resultEntry.nodeId);
+	}
 
-    count = 0;
-	EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
-    EXPECT_EQ(2, count);
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = 0;
+		EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir1", "data0"),
+							 [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(2, count);
+		EXPECT_EQ(*maybeData1Id0, resultEntry.nodeId);
+	}
 
-    count = -3;
-	EXPECT_FALSE(vfs.walk(User{9, 1}, vfs.rootId(), *makePath("dir1", "data0"), [&count](auto const&) { count += 1; }));
-    EXPECT_EQ(-3, count);
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = 0;
+		EXPECT_TRUE(vfs.walk(owner, vfs.rootId(), *makePath("dir1", "data0"),
+							 [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(2, count);
+		EXPECT_EQ(*maybeData1Id0, resultEntry.nodeId);
+	}
+
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = 0;
+		EXPECT_FALSE(vfs.walk(owner, vfs.rootId(), *makePath("dir1", "data7"),
+							 [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(1, count);
+		EXPECT_EQ(*maybeDirId1, resultEntry.nodeId);
+	}
+
+	{
+		Entry resultEntry{".", vfs.rootId()};
+		int count = -3;
+		EXPECT_FALSE(vfs.walk(User{9, 1}, vfs.rootId(), *makePath("dir1", "data0"),
+							  [&count, &resultEntry](Entry e, auto const&) { resultEntry = e; count += 1; }));
+		EXPECT_EQ(-3, count);
+		EXPECT_EQ(vfs.rootId(), resultEntry.nodeId);
+	}
 }
 
 

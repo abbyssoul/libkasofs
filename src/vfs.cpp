@@ -185,7 +185,7 @@ Vfs::unlink(User user, INode::Id fromDir, StringView name) {
 
 
 Optional<Entry>
-Vfs::lookup(INode::Id dirNodeId, StringView name) const {
+Vfs::lookup(INode::Id dirNodeId, StringView name) const noexcept {
     auto const maybeNode = nodeById(dirNodeId);
     if (!maybeNode) {
         return none;
@@ -282,7 +282,7 @@ Vfs::enumerateDirectory(User user, INode::Id dirNodeId) {
 
 
 Optional<Filesystem*>
-Vfs::findFs(VfsId id) const {
+Vfs::findFs(VfsId id) const noexcept {
 	auto it = _vfs.find(id);
 	if (it == _vfs.end())
 		return none;

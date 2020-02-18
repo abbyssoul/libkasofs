@@ -159,7 +159,7 @@ DirFs::removeEntry(INode& dirNode, StringView name) {
 
 
 Optional<Entry>
-DirFs::lookup(INode const& dirNode, StringView name) const {
+DirFs::lookup(INode const& dirNode, StringView name) const noexcept {
 	if (!isDirectoryNode(dirNode)) {
 		return none;
 	}
@@ -179,7 +179,7 @@ DirFs::lookup(INode const& dirNode, StringView name) const {
 
 
 DirFs::size_type
-DirFs::countEntries(INode const& dirNode) const {
+DirFs::countEntries(INode const& dirNode) const noexcept {
 	if (!isDirectoryNode(dirNode)) {
 		return 0;
 	}
@@ -192,7 +192,7 @@ DirFs::countEntries(INode const& dirNode) const {
 
 
 kasofs::Result<EntriesEnumerator>
-DirFs::enumerateEntries(Vfs& vfs, INode::Id dirNodeId, INode const& dirNode) const {
+DirFs::enumerateEntries(Vfs& vfs, INode::Id dirNodeId, INode const& dirNode) const noexcept {
 	if (!isDirectoryNode(dirNode)) {
 		return makeError(GenericError::NOTDIR, "DirFs::enumerateEntries");
 	}

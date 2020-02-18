@@ -161,7 +161,7 @@ public:
 	 * @return Id of the registered vfs or an error.
 	 */
 	Solace::Optional<Filesystem*>
-	findFs(VfsId id) const;
+	findFs(VfsId id) const noexcept;
 
 	/**
 	 * Un-Register previously registered vFS
@@ -250,14 +250,14 @@ public:
             }
 
 			// Invoke the callback handler
-			f(*maybeNode);
+			f(resultingEntry, *maybeNode);
         }
 
-		return resultingEntry;
+		return Result<Entry>{Solace::types::okTag, Solace::in_place, resultingEntry};
     }
 
 	auto walk(User user, INode::Id rootId, Solace::Path const& path) const {
-		return walk(user, rootId, path, [](auto const& ){});
+		return walk(user, rootId, path, [](Entry const&, INode const&){});
 	}
 
 	auto walk(User user, Solace::Path const& path) const {
@@ -316,10 +316,10 @@ protected:
      * @return Either an entry record or none.
      */
     Solace::Optional<Entry>
-	lookup(INode::Id dirNodeId, Solace::StringView name) const;
+	lookup(INode::Id dirNodeId, Solace::StringView name) const noexcept;
 
 	Solace::Optional<Filesystem*>
-	findFsOf(INode const& vnode) const {
+	findFsOf(INode const& vnode) const noexcept {
 		return findFs(vnode.fsTypeId);
 	}
 
