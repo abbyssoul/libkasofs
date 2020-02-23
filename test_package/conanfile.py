@@ -1,5 +1,4 @@
 import os
-
 from conans import ConanFile, CMake, tools
 
 
@@ -21,5 +20,5 @@ class LibkasofsTestConan(ConanFile):
 
     def test(self):
         if not tools.cross_building(self.settings):
-            os.chdir("bin")
-            self.run(".%sexample" % os.sep)
+            with tools.chdir("bin"):
+                self.run(".%sexample" % os.sep, run_environment=True)
